@@ -69,6 +69,9 @@ class TFProcess:
         self.RESIDUAL_FILTERS = 128
         self.RESIDUAL_BLOCKS = 6
 
+        # GPUs for training
+        self.gpus_num = 1
+
         # For exporting
         self.weights = []
 
@@ -98,14 +101,14 @@ class TFProcess:
         self.next_batch = iterator.get_next()
         self.train_handle = self.session.run(train_iterator.string_handle())
         self.test_handle = self.session.run(test_iterator.string_handle())
-        self.init_net(self.next_batch)
+        self.init_net(self.next_batch, self.gpus_num)
 
-    def init_net(self, next_batch):
-        self.x = next_batch[0]  # tf.placeholder(tf.float32, [None, 18, 19 * 19])
-        self.y_ = next_batch[1] # tf.placeholder(tf.float32, [None, 362])
-        self.z_ = next_batch[2] # tf.placeholder(tf.float32, [None, 1])
+    def init_net(self, next_batch, gpus_num):
+        self.y_ = next_batch[1]
+        self.sx = tf.split(next_batch[0], gpus_num)  # tf.placeholder(tf.float32, [None, 18, 19 * 19])
+        self.sy_ = tf.split(next_batch[1], gpus_num) # tf.placeholder(tf.float32, [None, 362])
+        self.sz_ = tf.split(next_batch[2], gpus_num) # tf.placeholder(tf.float32, [None, 1])
         self.batch_norm_count = 0
-        self.y_conv, self.z_conv = self.construct_net(self.x)
 
         if self.swa_enabled == True:
             # Count of networks accumulated into SWA
@@ -125,35 +128,42 @@ class TFProcess:
                 self.swa_accum_op = tf.assign_add(n, 1.)
             self.swa_load_op = tf.group(*load)
 
-        # Calculate loss on policy head
-        cross_entropy = \
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.y_,
-                                                    logits=self.y_conv)
-        self.policy_loss = tf.reduce_mean(cross_entropy)
-
-        # Loss on value head
-        self.mse_loss = \
-            tf.reduce_mean(tf.squared_difference(self.z_, self.z_conv))
-
-        # Regularizer
-        regularizer = tf.contrib.layers.l2_regularizer(scale=0.0001)
-        reg_variables = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-        self.reg_term = \
-            tf.contrib.layers.apply_regularization(regularizer, reg_variables)
-
-        # For training from a (smaller) dataset of strong players, you will
-        # want to reduce the factor in front of self.mse_loss here.
-        self.loss = 1.0 * self.policy_loss + 1.0 * self.mse_loss + self.reg_term
-
         # You need to change the learning rate here if you are training
         # from a self-play training set, for example start with 0.005 instead.
         opt_op = tf.train.MomentumOptimizer(
             learning_rate=0.05, momentum=0.9, use_nesterov=True)
 
+        tower_grads = []
+        tower_loss = []
+        tower_policy_loss = []
+        tower_mse_loss = []
+        tower_reg_term = []
+        tower_y_conv = []
+        counter = 0
+        for i in range(gpus_num):
+            with tf.device("/gpu:%d" % i):
+                with tf.name_scope("tower_%d" % i):
+                    loss, policy_loss, mse_loss, reg_term, y_conv = \
+                        self.tower_loss(self.sx[counter], self.sy_[counter], self.sz_[counter])
+                    counter += 1
+                    grads = opt_op.compute_gradients(loss)
+                    tower_grads.append(grads)
+                    tower_loss.append(loss)
+                    tower_policy_loss.append(policy_loss)
+                    tower_mse_loss.append(mse_loss)
+                    tower_reg_term.append(reg_term)
+                    tower_y_conv.append(y_conv)
+                    tf.get_variable_scope().reuse_variables()
+        self.loss = tf.reduce_mean(tower_loss)
+        self.policy_loss = tf.reduce_mean(tower_policy_loss)
+        self.mse_loss = tf.reduce_mean(tower_mse_loss)
+        self.reg_term = tf.reduce_mean(tower_reg_term)
+        self.y_conv = tf.concat(tower_y_conv, axis=0)
+        self.mean_grads = self.average_gradients(tower_grads)       
+
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(self.update_ops):
-            self.train_op = \
-                opt_op.minimize(self.loss, global_step=self.global_step)
+            self.train_op = opt_op.apply_gradients(self.mean_grads, global_step=self.global_step)
 
         correct_prediction = \
             tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1))
@@ -171,10 +181,52 @@ class TFProcess:
         self.train_writer = tf.summary.FileWriter(
             os.path.join(os.getcwd(), "leelalogs/train"), self.session.graph)
 
-        self.init = tf.global_variables_initializer()
+        self.init_var = tf.global_variables_initializer()
         self.saver = tf.train.Saver()
 
-        self.session.run(self.init)
+        self.session.run(self.init_var)
+
+    def average_gradients(self, tower_grads):
+        average_grads = []
+        for grad_and_vars in zip(*tower_grads):
+            grads = []
+            for g, _ in grad_and_vars:
+                expanded_g = tf.expand_dims(g, 0)
+                grads.append(expanded_g)
+
+            grad = tf.concat(0, grads)
+            grad = tf.reduce_mean(grad, 0)
+
+            v = grad_and_vars[0][1]
+            grad_and_var = (grad, v)
+            average_grads.append(grad_and_var)
+        return average_grads
+
+    def tower_loss(self, x, y_, z_):
+        y_conv, z_conv = self.construct_net(x)
+
+         # Calculate loss on policy head
+        cross_entropy = \
+            tf.nn.softmax_cross_entropy_with_logits(labels=y_,
+                                                    logits=y_conv)
+        policy_loss = tf.reduce_mean(cross_entropy)
+
+        # Loss on value head
+        mse_loss = \
+            tf.reduce_mean(tf.squared_difference(z_, z_conv))
+
+        # Regularizer
+        regularizer = tf.contrib.layers.l2_regularizer(scale=0.0001)
+        reg_variables = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+        reg_term = \
+            tf.contrib.layers.apply_regularization(regularizer, reg_variables)
+
+        # For training from a (smaller) dataset of strong players, you will
+        # want to reduce the factor in front of self.mse_loss here.
+        loss = 1.0 * policy_loss + 1.0 * mse_loss + reg_term
+
+        return loss, policy_loss, mse_loss, reg_term, y_conv
+
 
     def replace_weights(self, new_weights):
         for e, weights in enumerate(self.weights):
