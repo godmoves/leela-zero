@@ -155,7 +155,6 @@ class TFProcess:
                         tower_mse_loss.append(mse_loss)
                         tower_reg_term.append(reg_term)
                         tower_y_conv.append(y_conv)
-                        self.reset_batchnorm_key()
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -486,6 +485,9 @@ class TFProcess:
         # NCHW format
         # batch, 18 channels, 19 x 19
         x_planes = tf.reshape(planes, [-1, 18, 19, 19])
+
+        # Reset batchnorm key to 0.
+        self.reset_batchnorm_key()
 
         # Input convolution
         flow = self.conv_block(x_planes, filter_size=3,
