@@ -140,20 +140,21 @@ class TFProcess:
         tower_reg_term = []
         tower_y_conv = []
         counter = 0
-        for i in range(gpus_num):
-            with tf.device("/gpu:%d" % i):
-                with tf.name_scope("tower_%d" % i):
-                    loss, policy_loss, mse_loss, reg_term, y_conv = \
-                        self.tower_loss(self.sx[counter], self.sy_[counter], self.sz_[counter])
-                    counter += 1
-                    tf.get_variable_scope().reuse_variables()
-                    grads = opt_op.compute_gradients(loss)
-                    tower_grads.append(grads)
-                    tower_loss.append(loss)
-                    tower_policy_loss.append(policy_loss)
-                    tower_mse_loss.append(mse_loss)
-                    tower_reg_term.append(reg_term)
-                    tower_y_conv.append(y_conv)
+        with tf.variable_scope(tf.get_variable_scope()):
+            for i in range(gpus_num):
+                with tf.device("/gpu:%d" % i):
+                    with tf.name_scope("tower_%d" % i):
+                        loss, policy_loss, mse_loss, reg_term, y_conv = \
+                            self.tower_loss(self.sx[counter], self.sy_[counter], self.sz_[counter])
+                        counter += 1
+                        tf.get_variable_scope().reuse_variables()
+                        grads = opt_op.compute_gradients(loss)
+                        tower_grads.append(grads)
+                        tower_loss.append(loss)
+                        tower_policy_loss.append(policy_loss)
+                        tower_mse_loss.append(mse_loss)
+                        tower_reg_term.append(reg_term)
+                        tower_y_conv.append(y_conv)
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -192,11 +193,11 @@ class TFProcess:
         for grad_and_vars in zip(*tower_grads):
             grads = []
             for g, _ in grad_and_vars:
-                expanded_g = tf.expand_dims(g, 0)
+                expanded_g = tf.expand_dims(g, dim=0)
                 grads.append(expanded_g)
 
             grad = tf.concat(grads, axis=0)
-            grad = tf.reduce_mean(grad, 0)
+            grad = tf.reduce_mean(grad, reduction_indices=0)
 
             v = grad_and_vars[0][1]
             grad_and_var = (grad, v)
