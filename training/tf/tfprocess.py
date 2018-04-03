@@ -146,6 +146,7 @@ class TFProcess:
                     loss, policy_loss, mse_loss, reg_term, y_conv = \
                         self.tower_loss(self.sx[counter], self.sy_[counter], self.sz_[counter])
                     counter += 1
+                    tf.get_variable_scope().reuse_variables()
                     grads = opt_op.compute_gradients(loss)
                     tower_grads.append(grads)
                     tower_loss.append(loss)
@@ -153,7 +154,7 @@ class TFProcess:
                     tower_mse_loss.append(mse_loss)
                     tower_reg_term.append(reg_term)
                     tower_y_conv.append(y_conv)
-                    tf.get_variable_scope().reuse_variables()
+                    
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
         self.mse_loss = tf.reduce_mean(tower_mse_loss)
