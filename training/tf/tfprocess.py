@@ -69,7 +69,7 @@ class TFProcess:
         self.RESIDUAL_FILTERS = 128
         self.RESIDUAL_BLOCKS = 6
 
-        # GPUs for training
+        # Set number of GPUs for training
         self.gpus_num = 1
 
         # For exporting
@@ -155,6 +155,7 @@ class TFProcess:
                         tower_mse_loss.append(mse_loss)
                         tower_reg_term.append(reg_term)
                         tower_y_conv.append(y_conv)
+                        self.reset_batchnorm_key()
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -189,6 +190,7 @@ class TFProcess:
         self.session.run(self.init_var)
 
     def average_gradients(self, tower_grads):
+        # Average gradients from different GPUs
         average_grads = []
         for grad_and_vars in zip(*tower_grads):
             grads = []
@@ -389,6 +391,9 @@ class TFProcess:
         result = "bn" + str(self.batch_norm_count)
         self.batch_norm_count += 1
         return result
+
+    def reset_batchnorm_key(self):
+        self.batch_norm_count = 0
 
     def conv_block(self, inputs, filter_size, input_channels, output_channels):
         W_conv = weight_variable([filter_size, filter_size,
