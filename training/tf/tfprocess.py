@@ -21,20 +21,23 @@ import numpy as np
 import time
 import tensorflow as tf
 
-def weight_variable(shape):
+def weight_variable(name, shape):
     """Xavier initialization"""
     stddev = np.sqrt(2.0 / (sum(shape)))
     initial = tf.truncated_normal(shape, stddev=stddev)
-    weights = tf.Variable(initial)
+    # weights = tf.Variable(initial)
+    weights = tf.get_variable(name, shape=shape, initializer=initial)
     tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, weights)
     return weights
 
 # Bias weights for layers not followed by BatchNorm
 # We do not regularlize biases, so they are not
 # added to the regularlizer collection
-def bias_variable(shape):
+def bias_variable(name, shape):
     initial = tf.constant(0.0, shape=shape)
-    return tf.Variable(initial)
+    # return tf.Variable(initial)
+    bias = tf.get_variable(name, shape=shape, initializer=initial)
+    return bias
 
 def conv2d(x, W):
     return tf.nn.conv2d(x, W, data_format='NCHW',
@@ -163,9 +166,9 @@ class TFProcess:
                         tower_reg_term.append(reg_term)
                         tower_y_conv.append(y_conv)
 
-                        if i == 0:
-                            self.update_ops = tf.get_collection(
-                                tf.GraphKeys.UPDATE_OPS, name_scope)
+                        # if i == 0:
+                        #     self.update_ops = tf.get_collection(
+                        #         tf.GraphKeys.UPDATE_OPS, name_scope)
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -177,16 +180,16 @@ class TFProcess:
         # print(self.session.run(tower_grads))
         self.mean_grads = self.average_gradients(tower_grads)       
 
-        # self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        # with tf.control_dependencies(self.update_ops):
-        #     self.train_op = opt_op.apply_gradients(
-        #         self.mean_grads, global_step=self.global_step)
-        self.train_op = [
-            opt_op.apply_gradients(
+        self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(self.update_ops):
+            self.train_op = opt_op.apply_gradients(
                 self.mean_grads, global_step=self.global_step)
-        ]
-        self.train_op.extend(self.update_ops)
-        self.train_op = tf.group(*self.train_op)
+        # self.train_op = [
+        #     opt_op.apply_gradients(
+        #         self.mean_grads, global_step=self.global_step)
+        # ]
+        # self.train_op.extend(self.update_ops)
+        # self.train_op = tf.group(*self.train_op)
 
         correct_prediction = \
             tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1))
@@ -419,8 +422,8 @@ class TFProcess:
         # self.tower_count += 1
         self.reuse_var = True
 
-    def conv_block(self, inputs, filter_size, input_channels, output_channels):
-        W_conv = weight_variable([filter_size, filter_size,
+    def conv_block(self, inputs, filter_size, input_channels, output_channels, name):
+        W_conv = weight_variable(name, [filter_size, filter_size,
                                   input_channels, output_channels])
         # The weights are internal to the batchnorm layer, so apply
         # a unique scope that we can store, and use to look them back up
@@ -452,14 +455,14 @@ class TFProcess:
 
         return h_conv
 
-    def residual_block(self, inputs, channels):
+    def residual_block(self, inputs, channels, name):
         # First convnet
         orig = tf.identity(inputs)
-        W_conv_1 = weight_variable([3, 3, channels, channels])
+        W_conv_1 = weight_variable(name+"_conv_1", [3, 3, channels, channels])
         weight_key_1 = self.get_batchnorm_key()
 
         # Second convnet
-        W_conv_2 = weight_variable([3, 3, channels, channels])
+        W_conv_2 = weight_variable(name+"_conv_2", [3, 3, channels, channels])
         weight_key_2 = self.get_batchnorm_key()
 
         with tf.variable_scope(weight_key_1):
@@ -520,18 +523,21 @@ class TFProcess:
         # Input convolution
         flow = self.conv_block(x_planes, filter_size=3,
                                input_channels=18,
-                               output_channels=self.RESIDUAL_FILTERS)
+                               output_channels=self.RESIDUAL_FILTERS, 
+                               name="input_conv")
         # Residual tower
-        for _ in range(0, self.RESIDUAL_BLOCKS):
+        for i in range(0, self.RESIDUAL_BLOCKS):
+            block_name = "res_" + str(i)
             flow = self.residual_block(flow, self.RESIDUAL_FILTERS)
 
         # Policy head
         conv_pol = self.conv_block(flow, filter_size=1,
                                    input_channels=self.RESIDUAL_FILTERS,
-                                   output_channels=2)
+                                   output_channels=2,
+                                   name="policy_head")
         h_conv_pol_flat = tf.reshape(conv_pol, [-1, 2*19*19])
-        W_fc1 = weight_variable([2 * 19 * 19, (19 * 19) + 1])
-        b_fc1 = bias_variable([(19 * 19) + 1])
+        W_fc1 = weight_variable("w_fc_1", [2 * 19 * 19, (19 * 19) + 1])
+        b_fc1 = bias_variable("b_fc_1", [(19 * 19) + 1])
         self.weights.append(W_fc1)
         self.weights.append(b_fc1)
         h_fc1 = tf.add(tf.matmul(h_conv_pol_flat, W_fc1), b_fc1)
@@ -539,15 +545,16 @@ class TFProcess:
         # Value head
         conv_val = self.conv_block(flow, filter_size=1,
                                    input_channels=self.RESIDUAL_FILTERS,
-                                   output_channels=1)
+                                   output_channels=1,
+                                   name="value_head")
         h_conv_val_flat = tf.reshape(conv_val, [-1, 19*19])
-        W_fc2 = weight_variable([19 * 19, 256])
-        b_fc2 = bias_variable([256])
+        W_fc2 = weight_variable("w_fc_2", [19 * 19, 256])
+        b_fc2 = bias_variable("b_fc_2", [256])
         self.weights.append(W_fc2)
         self.weights.append(b_fc2)
         h_fc2 = tf.nn.relu(tf.add(tf.matmul(h_conv_val_flat, W_fc2), b_fc2))
-        W_fc3 = weight_variable([256, 1])
-        b_fc3 = bias_variable([1])
+        W_fc3 = weight_variable("w_fc_3", [256, 1])
+        b_fc3 = bias_variable("b_fc_3", [1])
         self.weights.append(W_fc3)
         self.weights.append(b_fc3)
         h_fc3 = tf.nn.tanh(tf.add(tf.matmul(h_fc2, W_fc3), b_fc3))
