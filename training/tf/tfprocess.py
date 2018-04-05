@@ -174,7 +174,7 @@ class TFProcess:
         self.y_conv = tf.concat(tower_y_conv, axis=0)
 
         # print(tower_grads)
-        print(self.session.run(tower_grads))
+        # print(self.session.run(tower_grads))
         self.mean_grads = self.average_gradients(tower_grads)       
 
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -411,7 +411,7 @@ class TFProcess:
         result = "bn" + str(self.batch_norm_count)
         self.batch_norm_count += 1
         ##debug##
-        print("Got batchnorm key %s" % result)
+        # print("Got batchnorm key %s" % result)
         return result
 
     def reset_batchnorm_key(self):
