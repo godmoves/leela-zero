@@ -172,6 +172,8 @@ class TFProcess:
         self.mse_loss = tf.reduce_mean(tower_mse_loss)
         self.reg_term = tf.reduce_mean(tower_reg_term)
         self.y_conv = tf.concat(tower_y_conv, axis=0)
+        
+        print(self.Session,run(tower_grads))
         self.mean_grads = self.average_gradients(tower_grads)       
 
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
