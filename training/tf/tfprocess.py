@@ -109,7 +109,7 @@ class TFProcess:
         self.sy_ = tf.split(next_batch[1], gpus_num) # tf.placeholder(tf.float32, [None, 362])
         self.sz_ = tf.split(next_batch[2], gpus_num) # tf.placeholder(tf.float32, [None, 1])
         self.batch_norm_count = 0
-        self.tower_count = 0
+        # self.tower_count = 0
         self.reuse_var = None
 
         if self.swa_enabled == True:
@@ -406,7 +406,7 @@ class TFProcess:
 
     def get_batchnorm_key(self):
         result = "/bn" + str(self.batch_norm_count)
-        result = "tower_" + str(self.tower_count) + result
+        # result = "tower_" + str(self.tower_count) + result
         self.batch_norm_count += 1
         ##debug##
         print("Got batchnorm key %s" % result)
@@ -414,7 +414,7 @@ class TFProcess:
 
     def reset_batchnorm_key(self):
         self.batch_norm_count = 0
-        self.tower_count += 1
+        # self.tower_count += 1
         self.reuse_var = True
 
     def conv_block(self, inputs, filter_size, input_channels, output_channels):
