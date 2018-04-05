@@ -110,7 +110,7 @@ class TFProcess:
         self.sz_ = tf.split(next_batch[2], gpus_num) # tf.placeholder(tf.float32, [None, 1])
         self.batch_norm_count = 0
         self.tower_count = 0
-        # self.reuse_var = None
+        self.reuse_var = None
 
         if self.swa_enabled == True:
             # Count of networks accumulated into SWA
@@ -415,7 +415,7 @@ class TFProcess:
     def reset_batchnorm_key(self):
         self.batch_norm_count = 0
         self.tower_count += 1
-        # self.reuse_var = True
+        self.reuse_var = True
 
     def conv_block(self, inputs, filter_size, input_channels, output_channels):
         W_conv = weight_variable([filter_size, filter_size,
@@ -431,7 +431,8 @@ class TFProcess:
                     conv2d(inputs, W_conv),
                     epsilon=1e-5, axis=1, fused=True,
                     center=True, scale=False,
-                    training=self.training)
+                    training=self.training,
+                    reuse=self.reuse_var)
         h_conv = tf.nn.relu(h_bn)
 
         beta_key = weight_key + "/batch_normalization/beta:0"
@@ -465,7 +466,8 @@ class TFProcess:
                     conv2d(inputs, W_conv_1),
                     epsilon=1e-5, axis=1, fused=True,
                     center=True, scale=False,
-                    training=self.training)
+                    training=self.training, 
+                    reuse=self.reuse_var)
         h_out_1 = tf.nn.relu(h_bn1)
         with tf.variable_scope(weight_key_2):
             h_bn2 = \
@@ -473,7 +475,8 @@ class TFProcess:
                     conv2d(h_out_1, W_conv_2),
                     epsilon=1e-5, axis=1, fused=True,
                     center=True, scale=False,
-                    training=self.training)
+                    training=self.training,
+                    reuse=self.reuse_var)
         h_out_2 = tf.nn.relu(tf.add(h_bn2, orig))
 
         beta_key_1 = weight_key_1 + "/batch_normalization/beta:0"
