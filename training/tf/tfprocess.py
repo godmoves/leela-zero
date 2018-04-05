@@ -25,7 +25,6 @@ def weight_variable(name, shape):
     """Xavier initialization"""
     stddev = np.sqrt(2.0 / (sum(shape)))
     initial = tf.truncated_normal(shape, stddev=stddev)
-    # weights = tf.Variable(initial)
     weights = tf.get_variable(name, initializer=initial)
     tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, weights)
     return weights
@@ -35,7 +34,6 @@ def weight_variable(name, shape):
 # added to the regularlizer collection
 def bias_variable(name, shape):
     initial = tf.constant(0.0, shape=shape)
-    # return tf.Variable(initial)
     bias = tf.get_variable(name, initializer=initial)
     return bias
 
@@ -69,8 +67,8 @@ def optimistic_restore(session, save_file, graph=tf.get_default_graph()):
 class TFProcess:
     def __init__(self):
         # Network structure
-        self.RESIDUAL_FILTERS = 4
-        self.RESIDUAL_BLOCKS = 2
+        self.RESIDUAL_FILTERS = 256
+        self.RESIDUAL_BLOCKS = 20
 
         # Set number of GPUs for training
         self.gpus_num = 2
@@ -157,7 +155,6 @@ class TFProcess:
 
                         tf.get_variable_scope().reuse_variables()
                         grads = opt_op.compute_gradients(loss)
-                        print(grads)
                         
                         tower_grads.append(grads)
                         tower_loss.append(loss)
@@ -165,31 +162,18 @@ class TFProcess:
                         tower_mse_loss.append(mse_loss)
                         tower_reg_term.append(reg_term)
                         tower_y_conv.append(y_conv)
-
-                        # if i == 0:
-                        #     self.update_ops = tf.get_collection(
-                        #         tf.GraphKeys.UPDATE_OPS, name_scope)
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
         self.mse_loss = tf.reduce_mean(tower_mse_loss)
         self.reg_term = tf.reduce_mean(tower_reg_term)
         self.y_conv = tf.concat(tower_y_conv, axis=0)
-
-        # print(tower_grads)
-        # print(self.session.run(tower_grads))
         self.mean_grads = self.average_gradients(tower_grads)       
 
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(self.update_ops):
             self.train_op = opt_op.apply_gradients(
                 self.mean_grads, global_step=self.global_step)
-        # self.train_op = [
-        #     opt_op.apply_gradients(
-        #         self.mean_grads, global_step=self.global_step)
-        # ]
-        # self.train_op.extend(self.update_ops)
-        # self.train_op = tf.group(*self.train_op)
 
         correct_prediction = \
             tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1))
@@ -413,13 +397,10 @@ class TFProcess:
     def get_batchnorm_key(self):
         result = "bn" + str(self.batch_norm_count)
         self.batch_norm_count += 1
-        ##debug##
-        # print("Got batchnorm key %s" % result)
         return result
 
     def reset_batchnorm_key(self):
         self.batch_norm_count = 0
-        # self.tower_count += 1
         self.reuse_var = True
 
     def conv_block(self, inputs, filter_size, input_channels, output_channels, name):
@@ -516,9 +497,6 @@ class TFProcess:
         # NCHW format
         # batch, 18 channels, 19 x 19
         x_planes = tf.reshape(planes, [-1, 18, 19, 19])
-
-        ##debug##
-        print("Construct Net Here")
 
         # Input convolution
         flow = self.conv_block(x_planes, filter_size=3,
