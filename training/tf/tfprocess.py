@@ -528,7 +528,8 @@ class TFProcess:
         # Residual tower
         for i in range(0, self.RESIDUAL_BLOCKS):
             block_name = "res_" + str(i)
-            flow = self.residual_block(flow, self.RESIDUAL_FILTERS)
+            flow = self.residual_block(flow, self.RESIDUAL_FILTERS,
+                                       name=block_name)
 
         # Policy head
         conv_pol = self.conv_block(flow, filter_size=1,
