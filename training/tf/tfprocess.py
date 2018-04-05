@@ -66,8 +66,8 @@ def optimistic_restore(session, save_file, graph=tf.get_default_graph()):
 class TFProcess:
     def __init__(self):
         # Network structure
-        self.RESIDUAL_FILTERS = 128
-        self.RESIDUAL_BLOCKS = 6
+        self.RESIDUAL_FILTERS = 256
+        self.RESIDUAL_BLOCKS = 20
 
         # Set number of GPUs for training
         self.gpus_num = 1
