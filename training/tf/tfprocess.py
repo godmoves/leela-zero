@@ -110,7 +110,7 @@ class TFProcess:
         self.sz_ = tf.split(next_batch[2], gpus_num) # tf.placeholder(tf.float32, [None, 1])
         self.batch_norm_count = 0
         self.tower_count = 0
-        self.reuse_var = None
+        # self.reuse_var = None
 
         if self.swa_enabled == True:
             # Count of networks accumulated into SWA
@@ -142,25 +142,25 @@ class TFProcess:
         tower_reg_term = []
         tower_y_conv = []
         counter = 0
-        # with tf.variable_scope(tf.get_variable_scope()):
-        for i in range(gpus_num):
-            with tf.device("/gpu:%d" % i):
-                with tf.name_scope("tower_%d" % i):
-                    loss, policy_loss, mse_loss, reg_term, y_conv = self.tower_loss(
-                        self.sx[counter], self.sy_[counter], self.sz_[counter])
-                    counter += 1
-                                        
-                    # Reset batchnorm key to 0.
-                    self.reset_batchnorm_key()
+        with tf.variable_scope(tf.get_variable_scope()):
+            for i in range(gpus_num):
+                with tf.device("/gpu:%d" % i):
+                    with tf.name_scope("tower_%d" % i):
+                        loss, policy_loss, mse_loss, reg_term, y_conv = self.tower_loss(
+                            self.sx[counter], self.sy_[counter], self.sz_[counter])
+                        counter += 1
+                                            
+                        # Reset batchnorm key to 0.
+                        self.reset_batchnorm_key()
 
-                    # tf.get_variable_scope().reuse_variables()
-                    grads = opt_op.compute_gradients(loss)
-                    tower_grads.append(grads)
-                    tower_loss.append(loss)
-                    tower_policy_loss.append(policy_loss)
-                    tower_mse_loss.append(mse_loss)
-                    tower_reg_term.append(reg_term)
-                    tower_y_conv.append(y_conv)
+                        tf.get_variable_scope().reuse_variables()
+                        grads = opt_op.compute_gradients(loss)
+                        tower_grads.append(grads)
+                        tower_loss.append(loss)
+                        tower_policy_loss.append(policy_loss)
+                        tower_mse_loss.append(mse_loss)
+                        tower_reg_term.append(reg_term)
+                        tower_y_conv.append(y_conv)
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -212,8 +212,7 @@ class TFProcess:
         return average_grads
 
     def tower_loss(self, x, y_, z_):
-        with tf.variable_scope(tf.get_variable_scope(), reuse=self.reuse_var):
-            y_conv, z_conv = self.construct_net(x)
+        y_conv, z_conv = self.construct_net(x)
 
          # Calculate loss on policy head
         cross_entropy = \
@@ -404,7 +403,7 @@ class TFProcess:
     def reset_batchnorm_key(self):
         self.batch_norm_count = 0
         self.tower_count += 1
-        self.reuse_var = True
+        # self.reuse_var = True
 
     def conv_block(self, inputs, filter_size, input_channels, output_channels):
         W_conv = weight_variable([filter_size, filter_size,
@@ -414,7 +413,7 @@ class TFProcess:
         # later on.
         weight_key = self.get_batchnorm_key()
 
-        with tf.variable_scope(weight_key, reuse=self.reuse_var):
+        with tf.variable_scope(weight_key):
             h_bn = \
                 tf.layers.batch_normalization(
                     conv2d(inputs, W_conv),
@@ -448,7 +447,7 @@ class TFProcess:
         W_conv_2 = weight_variable([3, 3, channels, channels])
         weight_key_2 = self.get_batchnorm_key()
 
-        with tf.variable_scope(weight_key_1, reuse=self.reuse_var):
+        with tf.variable_scope(weight_key_1):
             h_bn1 = \
                 tf.layers.batch_normalization(
                     conv2d(inputs, W_conv_1),
@@ -456,7 +455,7 @@ class TFProcess:
                     center=True, scale=False,
                     training=self.training)
         h_out_1 = tf.nn.relu(h_bn1)
-        with tf.variable_scope(weight_key_2, reuse=self.reuse_var):
+        with tf.variable_scope(weight_key_2):
             h_bn2 = \
                 tf.layers.batch_normalization(
                     conv2d(h_out_1, W_conv_2),
