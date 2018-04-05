@@ -174,7 +174,7 @@ class TFProcess:
         self.y_conv = tf.concat(tower_y_conv, axis=0)
 
         print(tower_grads)
-        print(self.Session.run(tower_grads))
+        print(self.session.run(tower_grads))
         self.mean_grads = self.average_gradients(tower_grads)       
 
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
