@@ -109,6 +109,8 @@ class TFProcess:
         self.sy_ = tf.split(next_batch[1], gpus_num) # tf.placeholder(tf.float32, [None, 362])
         self.sz_ = tf.split(next_batch[2], gpus_num) # tf.placeholder(tf.float32, [None, 1])
         self.batch_norm_count = 0
+        self.tower_count = 0
+        self.reuse_var = None
 
         if self.swa_enabled == True:
             # Count of networks accumulated into SWA
@@ -140,21 +142,25 @@ class TFProcess:
         tower_reg_term = []
         tower_y_conv = []
         counter = 0
-        with tf.variable_scope(tf.get_variable_scope()):
-            for i in range(gpus_num):
-                with tf.device("/gpu:%d" % i):
-                    with tf.name_scope("tower_%d" % i):
-                        loss, policy_loss, mse_loss, reg_term, y_conv = \
-                            self.tower_loss(self.sx[counter], self.sy_[counter], self.sz_[counter])
-                        counter += 1
-                        tf.get_variable_scope().reuse_variables()
-                        grads = opt_op.compute_gradients(loss)
-                        tower_grads.append(grads)
-                        tower_loss.append(loss)
-                        tower_policy_loss.append(policy_loss)
-                        tower_mse_loss.append(mse_loss)
-                        tower_reg_term.append(reg_term)
-                        tower_y_conv.append(y_conv)
+        # with tf.variable_scope(tf.get_variable_scope()):
+        for i in range(gpus_num):
+            with tf.device("/gpu:%d" % i):
+                with tf.name_scope("tower_%d" % i):
+                    loss, policy_loss, mse_loss, reg_term, y_conv = self.tower_loss(
+                        self.sx[counter], self.sy_[counter], self.sz_[counter], self.reuse_var)
+                    counter += 1
+                                        
+                    # Reset batchnorm key to 0.
+                    self.reset_batchnorm_key()
+
+                    # tf.get_variable_scope().reuse_variables()
+                    grads = opt_op.compute_gradients(loss)
+                    tower_grads.append(grads)
+                    tower_loss.append(loss)
+                    tower_policy_loss.append(policy_loss)
+                    tower_mse_loss.append(mse_loss)
+                    tower_reg_term.append(reg_term)
+                    tower_y_conv.append(y_conv)
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -205,8 +211,9 @@ class TFProcess:
             average_grads.append(grad_and_var)
         return average_grads
 
-    def tower_loss(self, x, y_, z_):
-        y_conv, z_conv = self.construct_net(x)
+    def tower_loss(self, x, y_, z_, reuse_var=None):
+        with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_var):
+            y_conv, z_conv = self.construct_net(x)
 
          # Calculate loss on policy head
         cross_entropy = \
@@ -387,12 +394,17 @@ class TFProcess:
                 file.write(" ".join(wt_str))
 
     def get_batchnorm_key(self):
-        result = "bn" + str(self.batch_norm_count)
+        result = "/bn" + str(self.batch_norm_count)
+        result = "tower_" + str(self.tower_count) + result
         self.batch_norm_count += 1
+        ##debug##
+        print("Got batchnorm key %s" % result)
         return result
 
     def reset_batchnorm_key(self):
         self.batch_norm_count = 0
+        self.tower_count += 1
+        self.reuse_var = True
 
     def conv_block(self, inputs, filter_size, input_channels, output_channels):
         W_conv = weight_variable([filter_size, filter_size,
@@ -486,8 +498,8 @@ class TFProcess:
         # batch, 18 channels, 19 x 19
         x_planes = tf.reshape(planes, [-1, 18, 19, 19])
 
-        # Reset batchnorm key to 0.
-        self.reset_batchnorm_key()
+        ##debug##
+        print("Construct Net Here")
 
         # Input convolution
         flow = self.conv_block(x_planes, filter_size=3,
