@@ -145,7 +145,7 @@ class TFProcess:
         with tf.variable_scope(tf.get_variable_scope()):
             for i in range(gpus_num):
                 with tf.device("/gpu:%d" % i):
-                    with tf.name_scope("tower_%d" % i) as name_scope:
+                    with tf.name_scope("tower_%d" % i):
                         loss, policy_loss, mse_loss, reg_term, y_conv = self.tower_loss(
                             self.sx[counter], self.sy_[counter], self.sz_[counter])
                         counter += 1
@@ -403,6 +403,10 @@ class TFProcess:
         self.batch_norm_count = 0
         self.reuse_var = True
 
+    def add_weights(self, variable):
+        if self.reuse_var == None:
+            self.weights.append(variable)
+
     def conv_block(self, inputs, filter_size, input_channels, output_channels, name):
         W_conv = weight_variable(name, [filter_size, filter_size,
                                   input_channels, output_channels])
@@ -429,10 +433,10 @@ class TFProcess:
         mean = tf.get_default_graph().get_tensor_by_name(mean_key)
         var = tf.get_default_graph().get_tensor_by_name(var_key)
 
-        self.weights.append(W_conv)
-        self.weights.append(beta)
-        self.weights.append(mean)
-        self.weights.append(var)
+        self.add_weights(W_conv)
+        self.add_weights(beta)
+        self.add_weights(mean)
+        self.add_weights(var)
 
         return h_conv
 
@@ -481,15 +485,15 @@ class TFProcess:
         mean_2 = tf.get_default_graph().get_tensor_by_name(mean_key_2)
         var_2 = tf.get_default_graph().get_tensor_by_name(var_key_2)
 
-        self.weights.append(W_conv_1)
-        self.weights.append(beta_1)
-        self.weights.append(mean_1)
-        self.weights.append(var_1)
+        self.add_weights(W_conv_1)
+        self.add_weights(beta_1)
+        self.add_weights(mean_1)
+        self.add_weights(var_1)
 
-        self.weights.append(W_conv_2)
-        self.weights.append(beta_2)
-        self.weights.append(mean_2)
-        self.weights.append(var_2)
+        self.add_weights(W_conv_2)
+        self.add_weights(beta_2)
+        self.add_weights(mean_2)
+        self.add_weights(var_2)
 
         return h_out_2
 
@@ -517,8 +521,8 @@ class TFProcess:
         h_conv_pol_flat = tf.reshape(conv_pol, [-1, 2*19*19])
         W_fc1 = weight_variable("w_fc_1", [2 * 19 * 19, (19 * 19) + 1])
         b_fc1 = bias_variable("b_fc_1", [(19 * 19) + 1])
-        self.weights.append(W_fc1)
-        self.weights.append(b_fc1)
+        self.add_weights(W_fc1)
+        self.add_weights(b_fc1)
         h_fc1 = tf.add(tf.matmul(h_conv_pol_flat, W_fc1), b_fc1)
 
         # Value head
@@ -529,13 +533,13 @@ class TFProcess:
         h_conv_val_flat = tf.reshape(conv_val, [-1, 19*19])
         W_fc2 = weight_variable("w_fc_2", [19 * 19, 256])
         b_fc2 = bias_variable("b_fc_2", [256])
-        self.weights.append(W_fc2)
-        self.weights.append(b_fc2)
+        self.add_weights(W_fc2)
+        self.add_weights(b_fc2)
         h_fc2 = tf.nn.relu(tf.add(tf.matmul(h_conv_val_flat, W_fc2), b_fc2))
         W_fc3 = weight_variable("w_fc_3", [256, 1])
         b_fc3 = bias_variable("b_fc_3", [1])
-        self.weights.append(W_fc3)
-        self.weights.append(b_fc3)
+        self.add_weights(W_fc3)
+        self.add_weights(b_fc3)
         h_fc3 = tf.nn.tanh(tf.add(tf.matmul(h_fc2, W_fc3), b_fc3))
 
         return h_fc1, h_fc3
