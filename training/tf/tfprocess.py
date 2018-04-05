@@ -70,7 +70,7 @@ class TFProcess:
         self.RESIDUAL_BLOCKS = 20
 
         # Set number of GPUs for training
-        self.gpus_num = 1
+        self.gpus_num = 2
 
         # For exporting
         self.weights = []
@@ -109,7 +109,6 @@ class TFProcess:
         self.sy_ = tf.split(next_batch[1], gpus_num) # tf.placeholder(tf.float32, [None, 362])
         self.sz_ = tf.split(next_batch[2], gpus_num) # tf.placeholder(tf.float32, [None, 1])
         self.batch_norm_count = 0
-        # self.tower_count = 0
         self.reuse_var = None
 
         if self.swa_enabled == True:
@@ -155,6 +154,7 @@ class TFProcess:
 
                         tf.get_variable_scope().reuse_variables()
                         grads = opt_op.compute_gradients(loss)
+                        print(grads)
                         
                         tower_grads.append(grads)
                         tower_loss.append(loss)
@@ -406,7 +406,6 @@ class TFProcess:
 
     def get_batchnorm_key(self):
         result = "bn" + str(self.batch_norm_count)
-        # result = "tower_" + str(self.tower_count) + result
         self.batch_norm_count += 1
         ##debug##
         print("Got batchnorm key %s" % result)
