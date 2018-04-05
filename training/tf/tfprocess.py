@@ -26,7 +26,7 @@ def weight_variable(name, shape):
     stddev = np.sqrt(2.0 / (sum(shape)))
     initial = tf.truncated_normal(shape, stddev=stddev)
     # weights = tf.Variable(initial)
-    weights = tf.get_variable(name, shape=shape, initializer=initial)
+    weights = tf.get_variable(name, initializer=initial)
     tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, weights)
     return weights
 
@@ -36,7 +36,7 @@ def weight_variable(name, shape):
 def bias_variable(name, shape):
     initial = tf.constant(0.0, shape=shape)
     # return tf.Variable(initial)
-    bias = tf.get_variable(name, shape=shape, initializer=initial)
+    bias = tf.get_variable(name, initializer=initial)
     return bias
 
 def conv2d(x, W):
