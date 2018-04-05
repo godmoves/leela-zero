@@ -173,7 +173,7 @@ class TFProcess:
         self.reg_term = tf.reduce_mean(tower_reg_term)
         self.y_conv = tf.concat(tower_y_conv, axis=0)
 
-        print(tower_grads)
+        # print(tower_grads)
         print(self.session.run(tower_grads))
         self.mean_grads = self.average_gradients(tower_grads)       
 
