@@ -405,7 +405,7 @@ class TFProcess:
                 file.write(" ".join(wt_str))
 
     def get_batchnorm_key(self):
-        result = "/bn" + str(self.batch_norm_count)
+        result = "bn" + str(self.batch_norm_count)
         # result = "tower_" + str(self.tower_count) + result
         self.batch_norm_count += 1
         ##debug##
