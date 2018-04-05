@@ -145,7 +145,7 @@ class TFProcess:
         with tf.variable_scope(tf.get_variable_scope()):
             for i in range(gpus_num):
                 with tf.device("/gpu:%d" % i):
-                    with tf.name_scope("tower_%d" % i):
+                    with tf.name_scope("tower_%d" % i) as name_scope:
                         loss, policy_loss, mse_loss, reg_term, y_conv = self.tower_loss(
                             self.sx[counter], self.sy_[counter], self.sz_[counter])
                         counter += 1
@@ -161,6 +161,10 @@ class TFProcess:
                         tower_mse_loss.append(mse_loss)
                         tower_reg_term.append(reg_term)
                         tower_y_conv.append(y_conv)
+
+                        if i == 0:
+                            update_ops = tf.get_collection(
+                                tf.GraphKeys.UPDATE_OPS, name_scope)
                     
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
@@ -170,8 +174,13 @@ class TFProcess:
         self.mean_grads = self.average_gradients(tower_grads)       
 
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        with tf.control_dependencies(self.update_ops):
-            self.train_op = opt_op.apply_gradients(self.mean_grads, global_step=self.global_step)
+        # with tf.control_dependencies(self.update_ops):
+        self.train_op = [
+            opt_op.apply_gradients(
+                self.mean_grads, global_step=self.global_step)
+        ]
+        self.train_op.extend(update_ops)
+        self.train_op = tf.group(*self.train_op)
 
         correct_prediction = \
             tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1))
