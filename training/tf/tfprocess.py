@@ -112,29 +112,12 @@ class TFProcess:
         self.batch_norm_count = 0
         self.reuse_var = None
 
-        if self.swa_enabled == True:
-            # Count of networks accumulated into SWA
-            self.swa_count = tf.Variable(0., name='swa_count', trainable=False)
-            # Count of networks to skip
-            self.swa_skip = tf.Variable(self.swa_c, name='swa_skip', trainable=False)
-            # Build the SWA variables and accumulators
-            accum=[]
-            load=[]
-            n = self.swa_count
-            for w in self.weights:
-                name = w.name.split(':')[0]
-                var = tf.Variable(tf.zeros(shape=w.shape), name='swa/'+name, trainable=False)
-                accum.append(tf.assign(var, var * (n / (n + 1.)) + w * (1. / (n + 1.))))
-                load.append(tf.assign(w, var))
-            with tf.control_dependencies(accum):
-                self.swa_accum_op = tf.assign_add(n, 1.)
-            self.swa_load_op = tf.group(*load)
-
         # You need to change the learning rate here if you are training
         # from a self-play training set, for example start with 0.005 instead.
         opt_op = tf.train.MomentumOptimizer(
             learning_rate=0.05, momentum=0.9, use_nesterov=True)
 
+        # Construct net here.
         tower_grads = []
         tower_loss = []
         tower_policy_loss = []
@@ -162,13 +145,33 @@ class TFProcess:
                         tower_mse_loss.append(mse_loss)
                         tower_reg_term.append(reg_term)
                         tower_y_conv.append(y_conv)
-                    
+
+        # Average losses from different GPUs.           
         self.loss = tf.reduce_mean(tower_loss)
         self.policy_loss = tf.reduce_mean(tower_policy_loss)
         self.mse_loss = tf.reduce_mean(tower_mse_loss)
         self.reg_term = tf.reduce_mean(tower_reg_term)
         self.y_conv = tf.concat(tower_y_conv, axis=0)
-        self.mean_grads = self.average_gradients(tower_grads)       
+        self.mean_grads = self.average_gradients(tower_grads)  
+
+        # Do swa after we contruct the net.
+        if self.swa_enabled == True:
+            # Count of networks accumulated into SWA
+            self.swa_count = tf.Variable(0., name='swa_count', trainable=False)
+            # Count of networks to skip
+            self.swa_skip = tf.Variable(self.swa_c, name='swa_skip', trainable=False)
+            # Build the SWA variables and accumulators
+            accum=[]
+            load=[]
+            n = self.swa_count
+            for w in self.weights:
+                name = w.name.split(':')[0]
+                var = tf.Variable(tf.zeros(shape=w.shape), name='swa/'+name, trainable=False)
+                accum.append(tf.assign(var, var * (n / (n + 1.)) + w * (1. / (n + 1.))))
+                load.append(tf.assign(w, var))
+            with tf.control_dependencies(accum):
+                self.swa_accum_op = tf.assign_add(n, 1.)
+            self.swa_load_op = tf.group(*load)
 
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(self.update_ops):
