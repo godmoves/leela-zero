@@ -43,7 +43,7 @@ DATA_ITEM_LINES = 16 + 1 + 1 + 1
 # Sane values are from 4096 to 64 or so. The maximum depends on the amount
 # of RAM in your GPU and the network size. You need to adjust the learning rate
 # if you change this.
-BATCH_SIZE = 512
+BATCH_SIZE = 128
 
 # Use a random sample of 1/16th of the input data read. This helps
 # improve the spread of games in the shuffle buffer.
