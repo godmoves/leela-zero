@@ -104,7 +104,7 @@ class TFProcess:
         self.test_handle = self.session.run(test_iterator.string_handle())
         self.init_net(self.next_batch, self.gpus_num)
 
-    def init_net(self, next_batch, gpus_num):
+    def init_net(self, next_batch, gpus_num=1):
         self.y_ = next_batch[1]
         self.sx = tf.split(next_batch[0], gpus_num)  # tf.placeholder(tf.float32, [None, 18, 19 * 19])
         self.sy_ = tf.split(next_batch[1], gpus_num) # tf.placeholder(tf.float32, [None, 362])
