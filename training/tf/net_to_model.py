@@ -31,7 +31,7 @@ with open(sys.argv[1], 'r') as f:
         ]
 
     tfprocess = TFProcess()
-    tfprocess.init_net(x)
+    tfprocess.init_net(x, gpus_num=1)
     if tfprocess.RESIDUAL_BLOCKS != blocks:
         raise ValueError("Number of blocks in tensorflow model doesn't match "\
                 "number of blocks in input network")
