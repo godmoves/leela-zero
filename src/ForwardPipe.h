@@ -37,17 +37,25 @@ public:
                                         unsigned int outputs,
                                         const std::vector<float>& weights,
                                         const std::vector<float>& means,
-                                        const std::vector<float>& variances) = 0;
+                                        const std::vector<float>& variances,
+                                        const std::vector<float>& prelu_alphas) = 0;
 
     virtual void push_residual(unsigned int filter_size,
                                unsigned int channels,
                                unsigned int outputs,
+                               unsigned int se_fc_outputs,
                                const std::vector<float>& weights_1,
                                const std::vector<float>& means_1,
                                const std::vector<float>& variances_1,
+                               const std::vector<float>& prelu_alphas_1,
                                const std::vector<float>& weights_2,
                                const std::vector<float>& means_2,
-                               const std::vector<float>& variances_2) = 0;
+                               const std::vector<float>& variances_2,
+                               const std::vector<float>& prelu_alphas_2,
+                               const std::vector<float>& se_fc1_w,
+                               const std::vector<float>& se_fc1_b,
+                               const std::vector<float>& se_fc2_w,
+                               const std::vector<float>& se_fc2_b) = 0;
 
     virtual void push_convolve(unsigned int filter_size,
                                unsigned int channels,

@@ -21,7 +21,10 @@ import gzip
 import itertools
 import multiprocessing as mp
 import numpy as np
-import pymongo
+try:
+    import pymongo
+except ImportError:
+    pymongo = None
 import sys
 
 def mongo_fetch_games(q_out, num_games):
@@ -149,7 +152,7 @@ def split_train_test(q_in, q_train, q_test):
         # Use the hash of the game to determine the split. This means
         # that test games will never be used for training.
         h = hash(item) & 0xfff
-        if h < 0.1*0xfff:
+        if h < 0.05*0xfff:
             # a test game.
             q_test.put(item)
         else:
@@ -199,7 +202,7 @@ def chunk_writer(q_in, namesrc):
     """
     for chunk in queue_gen(q_in,[]):
         filename = namesrc.next()
-        chunk_file = gzip.open(filename, 'w', 1)
+        chunk_file = gzip.open(filename, 'w', 9)
         chunk_file.write(chunk)
         chunk_file.close()
     print("chunk_writer completed")
@@ -230,12 +233,12 @@ def main(args):
         #procs.append(mp.Process(target=fake_fetch_games, args=(q_games, 20)))
         procs.append(mp.Process(target=mongo_fetch_games, args=(q_games, 275000)))
     # Split into train/test
-    q_test = mp.SimpleQueue()
+    #q_test = mp.SimpleQueue()
     q_train = mp.SimpleQueue()
-    procs.append(mp.Process(target=split_train_test, args=(q_games, q_train, q_test)))
+    #procs.append(mp.Process(target=split_train_test, args=(q_games, q_train, q_test)))
     # Convert v1 to v2 format and shuffle, writing 8192 moves per chunk.
     q_write_train = mp.SimpleQueue()
-    q_write_test = mp.SimpleQueue()
+    #q_write_test = mp.SimpleQueue()
     # Shuffle buffer is ~ 2.2GB of RAM with 2^20 (~1e6) entries. A game is ~500 moves, so
     # there's ~2000 games in the shuffle buffer. Selecting 8k moves gives an expected
     # number of ~4 moves from the same game in a given chunk file.
@@ -243,11 +246,11 @@ def main(args):
     # The output files are in parse.py via another 1e6 sized shuffle buffer. At 8192 moves
     # per chunk, there's ~ 128 chunks in the shuffle buffer. With a batch size of 4096,
     # the expected max number of moves from the same game in the batch is < 1.14
-    procs.append(mp.Process(target=chunk_parser, args=(q_train, q_write_train, 1<<20, 8192)))
-    procs.append(mp.Process(target=chunk_parser, args=(q_test, q_write_test, 1<<16, 8192)))
+    procs.append(mp.Process(target=chunk_parser, args=(q_games, q_write_train, 100, 8192)))
+    #procs.append(mp.Process(target=chunk_parser, args=(q_test, q_write_test, 1<<14, 8192)))
     # Write to output files
     procs.append(mp.Process(target=chunk_writer, args=(q_write_train, NameSrc('train_'))))
-    procs.append(mp.Process(target=chunk_writer, args=(q_write_test, NameSrc('test_'))))
+    #procs.append(mp.Process(target=chunk_writer, args=(q_write_test, NameSrc('test_'))))
 
     # Start all the child processes running.
     for p in procs:

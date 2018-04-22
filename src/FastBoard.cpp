@@ -24,6 +24,7 @@
 #include <queue>
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 #include "Utils.h"
 #include "config.h"
@@ -81,6 +82,13 @@ FastBoard::square_t FastBoard::get_square(int vertex) const {
     return m_square[vertex];
 }
 
+unsigned short FastBoard::get_liberties(int vertex) const {
+    assert(vertex >= 0 && vertex < MAXSQ);
+    assert(vertex >= 0 && vertex < m_maxsq);
+
+    return m_libs[m_parent[vertex]];
+}
+
 void FastBoard::set_square(int vertex, FastBoard::square_t content) {
     assert(vertex >= 0 && vertex < MAXSQ);
     assert(vertex >= 0 && vertex < m_maxsq);
@@ -91,6 +99,17 @@ void FastBoard::set_square(int vertex, FastBoard::square_t content) {
 
 FastBoard::square_t FastBoard::get_square(int x, int y) const {
     return get_square(get_vertex(x, y));
+}
+
+
+int FastBoard::get_square_neighbor(int vertex, int dir) const {
+    assert(0 <= dir && dir <= 3);
+
+    return vertex + m_dirs[dir];
+}
+
+unsigned short FastBoard::get_liberties(int x, int y) const {
+    return get_liberties(get_vertex(x, y));
 }
 
 void FastBoard::set_square(int x, int y, FastBoard::square_t content) {
@@ -309,6 +328,41 @@ void FastBoard::display_board(int lastmove) {
     myprintf("   ");
     print_columns();
     myprintf("\n");
+
+    display_liberties(lastmove);
+}
+
+
+void FastBoard::display_liberties(int lastmove) {
+    int boardsize = get_boardsize();
+
+    myprintf("   ");
+    print_columns();
+    for (int j = boardsize-1; j >= 0; j--) {
+        myprintf("%2d", j+1);
+        if (lastmove == get_vertex(0,j) )
+            myprintf("(");
+        else
+            myprintf(" ");
+        for (int i = 0; i < boardsize; i++) {
+            if (get_square(i,j) != EMPTY) {
+                int libs = get_liberties(i, j);
+                if (libs > 9) { libs = 9; };
+                myprintf("%1d", libs);
+            } else if (starpoint(boardsize, i, j)) {
+                myprintf("+");
+            } else {
+                myprintf(".");
+            }
+            if (lastmove == get_vertex(i, j)) myprintf(")");
+            else if (i != boardsize-1 && lastmove == get_vertex(i, j)+1) myprintf("(");
+            else myprintf(" ");
+        }
+        myprintf("%2d\n", j+1);
+    }
+    myprintf("   ");
+    print_columns();
+    myprintf("\n");
 }
 
 void FastBoard::print_columns() {
@@ -510,6 +564,13 @@ int FastBoard::get_prisoners(int side)  const {
 
 int FastBoard::get_to_move() const {
     return m_tomove;
+}
+
+int FastBoard::get_not_to_move() const {
+    if (black_to_move()) {
+        return WHITE;
+    }
+    return BLACK;
 }
 
 bool FastBoard::black_to_move() const {

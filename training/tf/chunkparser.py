@@ -32,8 +32,15 @@ import threading
 import time
 import unittest
 
-# 16 planes, 1 side to move, 1 x 362 probs, 1 winner = 19 lines
-DATA_ITEM_LINES = 16 + 1 + 1 + 1
+# 27 planes, 1 side to move, 1 x 362 probs, 1 winner = 30 lines
+
+# Planes:
+# 16 Histories
+# 1 Legal moves
+# 8 Liberties
+# 2 ladders
+PLANES = 27
+DATA_ITEM_LINES = PLANES + 1 + 1 + 1
 
 def remap_vertex(vertex, symmetry):
     """
@@ -62,7 +69,8 @@ class ChunkDataSrc:
 
 class ChunkParser:
     def __init__(self, chunkdatasrc, shuffle_size=1, sample=1,
-                 buffer_size=1, batch_size=256, workers=None):
+                 buffer_size=1, batch_size=256, workers=None,
+                 prune_flat_policy=0):
         """
             Read data and yield batches of raw tensors.
 
@@ -104,7 +112,7 @@ class ChunkParser:
         # Build full 16-plane reflection tables.
         self.full_reflection_table = [
             np.array([remap_vertex(vertex, sym) + p * 361
-                for p in range(16) for vertex in range(361)])
+                for p in range(PLANES) for vertex in range(361)])
                     for sym in range(8)]
         # Convert both to np.array.
         # This avoids a conversion step when they're actually used.
@@ -114,6 +122,8 @@ class ChunkParser:
             np.array(x, dtype=np.int64) for x in self.full_reflection_table ]
         # Build the all-zeros and all-ones flat planes, used for color-to-move.
         self.flat_planes = [ b'\1'*361 + b'\0'*361, b'\0'*361 + b'\1'*361 ]
+
+        self.prune_flat_policy = prune_flat_policy
 
         # set the down-sampling rate
         self.sample = sample
@@ -144,10 +154,10 @@ class ChunkParser:
         # V2 Format
         # int32 version (4 bytes)
         # (19*19+1) float32 probabilities (1448 bytes)
-        # 19*19*16 packed bit planes (722 bytes)
+        # 19*19*PLANES packed bit planes (1219 bytes)
         # uint8 side_to_move (1 byte)
         # uint8 is_winner (1 byte)
-        self.v2_struct = struct.Struct('4s1448s722sBB')
+        self.v2_struct = struct.Struct('4s1448s{}sBB'.format(int(math.ceil(19*19*PLANES/8))))
 
         # Struct used to return data from child workers.
         # float32 winner
@@ -155,7 +165,7 @@ class ChunkParser:
         # uint*6498 planes
         # (order is to ensure that no padding is required to
         #  make float32 be 32-bit aligned)
-        self.raw_struct = struct.Struct('4s1448s6498s')
+        #self.raw_struct = struct.Struct('4s1448s6498s')
 
     def convert_v1_to_v2(self, text_item):
         """
@@ -166,11 +176,11 @@ class ChunkParser:
             [probabilities],...
             winner,...
         """
-        # We start by building a list of 16 planes,
+        # We start by building a list of PLANES planes,
         # each being a 19*19 == 361 element array
         # of type np.uint8
         planes = []
-        for plane in range(0, 16):
+        for plane in range(0, PLANES):
             # first 360 first bits are 90 hex chars, encoded MSB
             hex_string = text_item[plane][0:90]
             array = np.unpackbits(np.frombuffer(
@@ -178,40 +188,42 @@ class ChunkParser:
             # Remaining bit that didn't fit. Encoded LSB so
             # it needs to be specially handled.
             last_digit = text_item[plane][90]
-            if not (last_digit == "0" or last_digit == "1"):
-                return False, None
+            assert last_digit == "0" or last_digit == "1"
             # Apply symmetry and append
             planes.append(array)
             planes.append(np.array([last_digit], dtype=np.uint8))
 
-        # We flatten to a single array of len 16*19*19, type=np.uint8
+        # We flatten to a single array of len PLANES*19*19, type=np.uint8
         planes = np.concatenate(planes)
         # and then to a byte string
         planes = np.packbits(planes).tobytes()
 
+        #print('v1_to_v2',len(planes))
+
         # Get the 'side to move'
-        stm = text_item[16][0]
-        if not(stm == "0" or stm == "1"):
-            return False, None
+        stm = text_item[PLANES][0]
+        assert stm == "0" or stm == "1"
         stm = int(stm)
 
         # Load the probabilities.
-        probabilities = np.array(text_item[17].split()).astype(np.float32)
+        probabilities = np.array(text_item[PLANES+1].split()).astype(np.float32)
         if np.any(np.isnan(probabilities)):
             # Work around a bug in leela-zero v0.3, skipping any
             # positions that have a NaN in the probabilities list.
             return False, None
-        if not(len(probabilities) == 362):
-            return False, None
+        if self.prune_flat_policy > 0:
+            m = np.max(probabilities)
+            r = random.random()
+            if m/self.prune_flat_policy < r:
+                return False, None
+        assert len(probabilities) == 362
 
         probs = probabilities.tobytes()
-        if not(len(probs) == 362 * 4):
-            return False, None
+        assert(len(probs) == 362 * 4)
 
         # Load the game winner color.
-        winner = float(text_item[18])
-        if not(winner == 1.0 or winner == -1.0):
-            return False, None
+        winner = float(text_item[PLANES+2])
+        assert winner == 1.0 or winner == -1.0
         winner = int((winner + 1) / 2)
 
         version = struct.pack('i', 1)
@@ -231,7 +243,7 @@ class ChunkParser:
         # We use the full length reflection tables to apply symmetry
         # to all 16 planes simultaneously
         planes = planes[self.full_reflection_table[symmetry]]
-        assert len(planes) == 19*19*16
+        assert len(planes) == 19*19*PLANES
         planes = np.packbits(planes)
         planes = planes.tobytes()
 
@@ -252,7 +264,7 @@ class ChunkParser:
             v2 struct format is
                 int32 ver
                 float probs[19*18+1]
-                byte planes[19*19*16/8]
+                byte planes[19*19*PLANES/8 (tounded up)]
                 byte to_move
                 byte winner
 
@@ -263,14 +275,14 @@ class ChunkParser:
         """
         (ver, probs, planes, to_move, winner) = self.v2_struct.unpack(content)
         # Unpack planes.
-        planes = np.unpackbits(np.frombuffer(planes, dtype=np.uint8))
-        assert len(planes) == 19*19*16
+        planes = np.unpackbits(np.frombuffer(planes, dtype=np.uint8))[:19*19*PLANES]
+        assert len(planes) == 19*19*PLANES
         # Now we add the two final planes, being the 'color to move' planes.
         stm = to_move
         assert stm == 0 or stm == 1
         # Flattern all planes to a single byte string
         planes = planes.tobytes() + self.flat_planes[stm]
-        assert len(planes) == (18 * 19 * 19), len(planes)
+        assert len(planes) == (PLANES + 2) * 19 * 19, len(planes)
 
         winner = float(winner * 2 - 1)
         assert winner == 1.0 or winner == -1.0, winner
@@ -392,7 +404,7 @@ class ChunkParserTest(unittest.TestCase):
         """
         # 1. 18 binary planes of length 361
         planes = [np.random.randint(2, size=361).tolist()
-                  for plane in range(16)]
+                  for plane in range(PLANES)]
         stm = float(np.random.randint(2))
         planes.append([stm] * 361)
         planes.append([1. - stm] * 361)
@@ -416,14 +428,14 @@ class ChunkParserTest(unittest.TestCase):
 
         # Convert that to a v1 text record.
         items = []
-        for p in range(16):
+        for p in range(PLANES):
             # generate first 360 bits
             h = np.packbits([int(x) for x in planes[p][0:360]]).tobytes().hex()
             # then add the stray single bit
             h += str(planes[p][360]) + "\n"
             items.append(h)
         # then side to move
-        items.append(str(int(planes[17][0])) + "\n")
+        items.append(str(int(planes[PLANES+1][0])) + "\n")
         # then probabilities
         items.append(' '.join([str(x) for x in probs]) + "\n")
         # and finally if the side to move is a winner
@@ -443,7 +455,7 @@ class ChunkParserTest(unittest.TestCase):
 
         # Convert batch to python lists.
         batch = ( np.reshape(np.frombuffer(data[0], dtype=np.uint8),
-                             (batch_size, 18, 19*19)).tolist(),
+                             (batch_size, PLANES+2, 19*19)).tolist(),
                   np.reshape(np.frombuffer(data[1], dtype=np.float32),
                              (batch_size, 19*19+1)).tolist(),
                   np.reshape(np.frombuffer(data[2], dtype=np.float32),

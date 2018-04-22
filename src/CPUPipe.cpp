@@ -266,25 +266,100 @@ void batchnorm(const size_t channels,
                std::vector<float>& data,
                const float* const means,
                const float* const stddivs,
-               const float* const eltwise = nullptr) {
-    const auto lambda_ReLU = [](const auto val) { return (val > 0.0f) ?
-                                                          val : 0.0f; };
+               const float* const prelu_alphas,
+               const bool relu = true,
+               const float* const eltwise = nullptr)
+{
+    const auto lambda_PReLU = [](const auto val, const auto alpha) { return (val > 0.0f) ?
+                                                                    val : alpha * val; };
     for (auto c = size_t{0}; c < channels; ++c) {
         const auto mean = means[c];
         const auto scale_stddiv = stddivs[c];
         const auto arr = &data[c * spatial_size];
+        const auto prelu_alpha = prelu_alphas[c];
 
         if (eltwise == nullptr) {
             // Classical BN
             for (auto b = size_t{0}; b < spatial_size; b++) {
-                arr[b] = lambda_ReLU(scale_stddiv * (arr[b] - mean));
+                auto val = scale_stddiv * (arr[b] - mean);
+                if (relu) {
+                    val = lambda_PReLU(val, prelu_alpha);
+                }
+                arr[b] = val;
             }
         } else {
             // BN + residual add
             const auto res = &eltwise[c * spatial_size];
             for (auto b = size_t{0}; b < spatial_size; b++) {
-                arr[b] = lambda_ReLU((scale_stddiv * (arr[b] - mean)) + res[b]);
+                auto val = scale_stddiv * (arr[b] - mean) + res[b];
+                if (relu) {
+                    val = lambda_PReLU(val, prelu_alpha);
+                }
+                arr[b] = val;
             }
+        }
+    }
+}
+
+std::vector<float> innerproduct(const size_t inputs,
+                                const size_t outputs,
+                                const bool ReLU,
+                                const std::vector<float>& input,
+                                const std::vector<float>& weights,
+                                const std::vector<float>& biases) {
+    std::vector<float> output(outputs);
+
+    cblas_sgemv(CblasRowMajor, CblasNoTrans,
+                // M     K
+                outputs, inputs,
+                1.0f, &weights[0], inputs,
+                &input[0], 1,
+                0.0f, &output[0], 1);
+
+    const auto lambda_ReLU = [](const auto val) { return (val > 0.0f) ?
+                                                          val : 0.0f; };
+    for (unsigned int o = 0; o < outputs; o++) {
+        auto val = biases[o] + output[o];
+        if (ReLU) {
+            val = lambda_ReLU(val);
+        }
+        output[o] = val;
+    }
+
+    return output;
+}
+
+void global_avg_pooling(const size_t channels,
+                        const std::vector<float>& input,
+                        std::vector<float>& output) {
+
+    for ( auto c = size_t{0}; c < channels; c++) {
+        auto acc = 0.0f;
+        for ( auto i = size_t{0}; i < BOARD_SQUARES; i++) {
+            acc += input[c * BOARD_SQUARES + i];
+        }
+        output[c] = acc/BOARD_SQUARES;
+    }
+}
+
+void apply_se(const size_t channels,
+              const std::vector<float>& input,
+              const std::vector<float>& res,
+              const std::vector<float>& scale,
+              std::vector<float>& output,
+              const std::vector<float>& prelu_alphas) {
+
+    const auto lambda_ReLU = [](const auto val, const auto alpha) { return (val > 0.0f) ?
+                                                                    val : alpha * val; };
+
+    const auto lambda_sigmoid = [](const auto val) { return 1.0f/(1.0f + exp(-val)); };
+
+    for ( auto c = size_t{0}; c < channels; c++) {
+        auto sig_scale = lambda_sigmoid(scale[c]);
+        auto alpha = prelu_alphas[c];
+        for ( auto i = size_t{0}; i < BOARD_SQUARES; i++) {
+            output[c * BOARD_SQUARES + i] = lambda_ReLU(sig_scale * input[c * BOARD_SQUARES + i]
+                                          + res[c * BOARD_SQUARES + i], alpha);
         }
     }
 }
@@ -309,19 +384,24 @@ void CPUPipe::forward(const std::vector<float>& input,
     winograd_convolve3(output_channels, input, m_conv_weights[0], V, M, conv_out);
     batchnorm<BOARD_SQUARES>(output_channels, conv_out,
                              m_batchnorm_means[0].data(),
-                             m_batchnorm_stddivs[0].data());
+                             m_batchnorm_stddivs[0].data(),
+                             m_prelu_alphas[0].data());
+
 
     // Residual tower
+    auto pooling = std::vector<float>(output_channels);
     auto conv_in = std::vector<float>(output_channels * BOARD_SQUARES);
     auto res = std::vector<float>(output_channels * BOARD_SQUARES);
+    auto block = 0;
     for (auto i = size_t{1}; i < m_conv_weights.size(); i += 2) {
-        auto output_channels = m_input_channels;
+        auto output_channels = m_batchnorm_stddivs[i].size();
         std::swap(conv_out, conv_in);
         winograd_convolve3(output_channels, conv_in,
                            m_conv_weights[i], V, M, conv_out);
         batchnorm<BOARD_SQUARES>(output_channels, conv_out,
                                  m_batchnorm_means[i].data(),
-                                 m_batchnorm_stddivs[i].data());
+                                 m_batchnorm_stddivs[i].data(),
+                                 m_prelu_alphas[i].data());
 
         std::swap(conv_in, res);
         std::swap(conv_out, conv_in);
@@ -330,7 +410,20 @@ void CPUPipe::forward(const std::vector<float>& input,
         batchnorm<BOARD_SQUARES>(output_channels, conv_out,
                                  m_batchnorm_means[i + 1].data(),
                                  m_batchnorm_stddivs[i + 1].data(),
-                                 res.data());
+                                 m_prelu_alphas[i + 1].data(),
+                                 false);
+        std::swap(conv_out, conv_in);
+
+        global_avg_pooling(output_channels, conv_in, pooling);
+
+        auto fc_outputs = m_se_fc1_w[block].size() / output_channels;
+        auto se1 = innerproduct(output_channels, fc_outputs, true, pooling, m_se_fc1_w[block], m_se_fc1_b[block]);
+        auto se2 = innerproduct(fc_outputs, output_channels, false, se1, m_se_fc2_w[block], m_se_fc2_b[block]);
+
+        apply_se(output_channels, conv_in, res, se2, conv_out, m_prelu_alphas[i + 1]);
+
+        block++;
+
     }
     convolve<1>(Network::OUTPUTS_POLICY, conv_out, m_conv_pol_w, m_conv_pol_b, output_pol);
     convolve<1>(Network::OUTPUTS_VALUE, conv_out, m_conv_val_w, m_conv_val_b, output_val);
@@ -342,28 +435,44 @@ void CPUPipe::push_input_convolution(unsigned int /*filter_size*/,
                                      unsigned int /*outputs*/,
                                      const std::vector<float>& weights,
                                      const std::vector<float>& means,
-                                     const std::vector<float>& variances) {
+                                     const std::vector<float>& variances,
+                                     const std::vector<float>& prelu_alphas) {
     m_conv_weights.push_back(weights);
     m_batchnorm_means.push_back(means);
     m_batchnorm_stddivs.push_back(variances);
+    m_prelu_alphas.push_back(prelu_alphas);
 }
 
 void CPUPipe::push_residual(unsigned int /*filter_size*/,
                             unsigned int /*channels*/,
                             unsigned int /*outputs*/,
+                            unsigned int /*se_fc_outputs*/,
                             const std::vector<float>& weights_1,
                             const std::vector<float>& means_1,
                             const std::vector<float>& variances_1,
+                            const std::vector<float>& prelu_alphas_1,
                             const std::vector<float>& weights_2,
                             const std::vector<float>& means_2,
-                            const std::vector<float>& variances_2) {
+                            const std::vector<float>& variances_2,
+                            const std::vector<float>& prelu_alphas_2,
+                            const std::vector<float>& se_fc1_w,
+                            const std::vector<float>& se_fc1_b,
+                            const std::vector<float>& se_fc2_w,
+                            const std::vector<float>& se_fc2_b) {
     m_conv_weights.push_back(weights_1);
     m_batchnorm_means.push_back(means_1);
     m_batchnorm_stddivs.push_back(variances_1);
+    m_prelu_alphas.push_back(prelu_alphas_1);
 
     m_conv_weights.push_back(weights_2);
     m_batchnorm_means.push_back(means_2);
     m_batchnorm_stddivs.push_back(variances_2);
+    m_prelu_alphas.push_back(prelu_alphas_2);
+
+    m_se_fc1_w.push_back(se_fc1_w);
+    m_se_fc1_b.push_back(se_fc1_b);
+    m_se_fc2_w.push_back(se_fc2_w);
+    m_se_fc2_b.push_back(se_fc2_b);
 }
 
 void CPUPipe::push_convolve(unsigned int filter_size,

@@ -27,6 +27,8 @@
 #include "Utils.h"
 #include "Zobrist.h"
 
+#include "Ladder.h"
+
 using namespace Utils;
 
 void FastState::init_game(int size, float komi) {
@@ -61,7 +63,7 @@ void FastState::reset_board(void) {
     board.reset_board(board.get_boardsize());
 }
 
-bool FastState::is_move_legal(int color, int vertex) {
+bool FastState::is_move_legal(int color, int vertex) const {
     return vertex == FastBoard::PASS ||
            vertex == FastBoard::RESIGN ||
            (vertex != m_komove &&
@@ -141,6 +143,8 @@ void FastState::display_state() {
              board.get_prisoners(FastBoard::WHITE));
 
     board.display_board(get_last_move());
+
+    Ladder::display_ladders(*this);
 }
 
 std::string FastState::move_to_text(int move) {

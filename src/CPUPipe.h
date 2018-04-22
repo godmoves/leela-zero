@@ -37,17 +37,25 @@ public:
                                         unsigned int outputs,
                                         const std::vector<float>& weights,
                                         const std::vector<float>& means,
-                                        const std::vector<float>& variances);
+                                        const std::vector<float>& variances,
+                                        const std::vector<float>& prelu_alphas);
 
     virtual void push_residual(unsigned int filter_size,
                                unsigned int channels,
                                unsigned int outputs,
+                               unsigned int se_fc_outputs,
                                const std::vector<float>& weights_1,
                                const std::vector<float>& means_1,
                                const std::vector<float>& variances_1,
+                               const std::vector<float>& prelu_alphas_1,
                                const std::vector<float>& weights_2,
                                const std::vector<float>& means_2,
-                               const std::vector<float>& variances_2);
+                               const std::vector<float>& variances_2,
+                               const std::vector<float>& prelu_alphas_2,
+                               const std::vector<float>& se_fc1_w,
+                               const std::vector<float>& se_fc1_b,
+                               const std::vector<float>& se_fc2_w,
+                               const std::vector<float>& se_fc2_b);
 
     virtual void push_convolve(unsigned int filter_size,
                                unsigned int channels,
@@ -83,6 +91,12 @@ private:
     std::vector<std::vector<float>> m_conv_weights;
     std::vector<std::vector<float>> m_batchnorm_means;
     std::vector<std::vector<float>> m_batchnorm_stddivs;
+    std::vector<std::vector<float>> m_prelu_alphas;
+
+    std::vector<std::vector<float>> m_se_fc1_w;
+    std::vector<std::vector<float>> m_se_fc1_b;
+    std::vector<std::vector<float>> m_se_fc2_w;
+    std::vector<std::vector<float>> m_se_fc2_b;
 
     std::vector<float> m_conv_pol_w;
     std::vector<float> m_conv_val_w;

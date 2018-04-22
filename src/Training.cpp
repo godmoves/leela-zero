@@ -236,7 +236,7 @@ void Training::dump_training(int winner_color, OutputChunker& outchunk) {
     for (const auto& step : m_data) {
         auto out = std::stringstream{};
         // First output 16 times an input feature plane
-        for (auto p = size_t{0}; p < 16; p++) {
+        for (auto p = size_t{0}; p < 16 + 1 + 8 + 2; p++) {
             const auto& plane = step.planes[p];
             // Write it out as a string of hex characters
             for (auto bit = size_t{0}; bit + 3 < plane.size(); bit += 4) {
@@ -397,4 +397,248 @@ void Training::dump_supervised(const std::string& sgf_name,
     }
 
     std::cout << "Dumped " << train_pos << " training positions." << std::endl;
+}
+
+static int idx_to_vertex(FullBoard &board, const int idx) {
+    if (idx == BOARD_SIZE*BOARD_SIZE) {
+        return FastBoard::PASS;
+    }
+    auto x = idx % BOARD_SIZE;
+    auto y = idx / BOARD_SIZE;
+    return board.get_vertex(x, y);
+}
+
+static unsigned char hex2int(unsigned char ch)
+{
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    return -1;
+}
+
+void Training::add_features(const std::string& training_file,
+                               const std::string& out_filename) {
+    /* Add feature planes to Leela Zero training data */
+
+    auto in = gzopen(training_file.c_str(), "r");
+
+    if (!in) {
+        Utils::myprintf("Failed to open file %s\n", training_file.c_str());
+        return;
+    }
+
+    auto outchunker = OutputChunker{out_filename, true};
+
+    std::stringstream stream;
+    const unsigned int bufsize = 10000;
+    std::vector<char> buffer(bufsize);
+
+    while (true) {
+        auto bytes = gzread(in, &buffer[0], bufsize);
+        if (bytes == 0) {
+            break;
+        }
+        if (bytes < 0) {
+            Utils::myprintf("gzread error: %s\n", gzerror(in, &bytes));
+            return;
+        }
+        stream.write(buffer.data(), bytes);
+    }
+    gzclose(in);
+
+    auto training_str = std::string{};
+
+    while (true) {
+        auto line = std::string{};
+        auto planecount = 0;
+        auto turn = 0;
+        auto winner = 0;
+        std::vector<float> policy;
+        std::vector<std::vector<unsigned char>> history;
+        auto state = GameState();
+
+        state.init_game(BOARD_SIZE, 7.5f);
+
+        while (std::getline(stream, line)) {
+            if (planecount < 16) {
+                // History planes
+                history.emplace_back(std::vector<unsigned char>());
+                for (auto i = size_t{0}; i < line.size(); i++) {
+                    history[planecount].emplace_back(hex2int(line[i]));
+                    //history[planecount].emplace_back((unsigned char)(line[i] - '0'));
+                }
+            } else if (planecount == 16) {
+                // Current turn
+                turn = std::stoi(line);
+            } else if (planecount == 17) {
+                // Policy vector
+                float x;
+                std::istringstream iss(line);
+                while (iss >> x) {
+                    policy.emplace_back(x);
+                }
+            } else {
+                // Winner
+                winner = std::stoi(line);
+            }
+            planecount++;
+            if (planecount == 19) {
+                planecount = 0;
+                break;
+            }
+        }
+
+        if (line.size() == 0) {
+            break;
+        }
+
+        auto to_move = turn == 0 ? FullBoard::BLACK : FullBoard::WHITE;
+        auto not_to_move = turn != 0 ? FullBoard::BLACK : FullBoard::WHITE;
+
+        // Play all moves in the last history planes
+        for (auto i = size_t{0}; i < history[0].size(); i++) {
+            // 4 moves in a byte
+            for (auto j = 0; j < 4; j++) {
+                auto idx = 4*i + (3 - j);
+                if (i == 90) {
+                    if (j != 3) {
+                        continue;
+                    }
+                    idx = 360;
+                }
+                auto vertex = idx_to_vertex(state.board, idx);
+                // Opponent last history plane
+                if (history[15][i] & (1 << j) || (idx == 360 && history[15][i] == 1)) {
+                    if (state.is_move_legal(not_to_move, vertex)) {
+                        state.play_move(not_to_move, vertex);
+                    } else {
+                        Utils::myprintf("illegal move\n");
+                        state.board.display_board();
+                        Utils::myprintf("move %s %d\n", state.board.move_to_text(vertex).c_str(), idx);
+                        for(auto i=0;i<91;i++){
+                            Utils::myprintf("%d ", history[7][i]);
+                        }
+                        Utils::myprintf("\n");
+                    }
+
+                }
+                // Our last history plane
+                if (history[7][i] & (1 << j) || (idx == 360 && history[7][i] == 1)) {
+                    if (state.is_move_legal(to_move, vertex)) {
+                        state.play_move(to_move, vertex);
+                    } else {
+                        Utils::myprintf("illegal move\n");
+                        state.board.display_board();
+                        Utils::myprintf("move %s %d\n", state.board.move_to_text(vertex).c_str(), idx);
+                        for(auto i=0;i<91;i++){
+                            Utils::myprintf("%d ", history[7][i]);
+                        }
+                        Utils::myprintf("\n");
+                    }
+                }
+            }
+        }
+
+        auto illegal_moves = false;
+
+        for (auto p = 7; p > 0; p--) {
+            auto move_vertex = FastBoard::PASS;
+            auto player = FastBoard::BLACK;
+            int move;
+
+            for (auto i = size_t{0}; i < history[0].size(); i++) {
+                if (p % 2 == 0) {
+                    move = ~history[p][i] & history[p - 1][i];
+                    player = to_move;
+                } else {
+                    move = ~history[8 + p][i] & history[8 + p - 1][i];
+                    player = not_to_move;
+                }
+                if (move == 0) {
+                    continue;
+                }
+                // 4 moves in a byte
+                for (auto j = 0; j < 4; j++) {
+                    auto idx = 4*i + (3 - j);
+                    // Last byte must be handled as a special case
+                    if (i == 90) {
+                        if (j != 3) {
+                            continue;
+                        }
+                        idx = 360;
+                    }
+                    auto vertex = idx_to_vertex(state.board, idx);
+                    // Opponent last history plane
+                    if ( ((move & (1 << j)) != 0) || (idx == 360 && move == 1)) {
+                        move_vertex = vertex;
+                    }
+                }
+            }
+            if (state.is_move_legal(player, move_vertex)) {
+                state.play_move(player, move_vertex);
+                //Utils::myprintf("move %s %s\n", player == FastBoard::BLACK ? "b" : "w", state.board.move_to_text(move_vertex).c_str());
+            } else {
+                illegal_moves = true;
+                Utils::myprintf("illegal move\n");
+                state.board.display_board();
+                Utils::myprintf("move %s\n", state.board.move_to_text(move_vertex).c_str());
+            }
+        }
+        
+        if (illegal_moves) {
+            // Bad data
+            continue;
+        }
+
+        auto planes = get_planes(&state);
+
+        // Dump output
+        auto out = std::stringstream{};
+
+        // First output 16 times an input feature plane
+        // 16 Histories
+        // 1 Legal moves
+        // 8 Liberties
+        // 2 ladders
+        // 2 Black/white to move
+        for (auto p = size_t{0}; p < 16 + 1 + 8 + 2; p++) {
+            const auto& plane = planes[p];
+            // Write it out as a string of hex characters
+            for (auto bit = size_t{0}; bit + 3 < plane.size(); bit += 4) {
+                auto hexbyte =  plane[bit]     << 3
+                              | plane[bit + 1] << 2
+                              | plane[bit + 2] << 1
+                              | plane[bit + 3] << 0;
+                out << std::hex << hexbyte;
+                if (p < 16) {
+                    assert(history[p][bit/4] == hexbyte);
+                }
+            }
+            // BOARD_SQUARES % 4 = 1 so the last bit goes by itself
+            // for odd sizes
+            assert(plane.size() % 4 == 1);
+            out << plane[plane.size() - 1];
+            out << std::dec << std::endl;
+        }
+
+        // The side to move planes can be compactly encoded into a single
+        // bit, 0 = black to move.
+        out << turn << std::endl;
+        // Then a BOARD_SQUARES + 1 long array of float probabilities
+        for (auto it = begin(policy);
+            it != end(policy); ++it) {
+            out << *it;
+            if (next(it) != end(policy)) {
+                out << " ";
+            }
+        }
+        out << std::endl;
+        // And the game result for the side to move
+        out << winner << std::endl;
+        training_str.append(out.str());
+    }
+    outchunker.append(training_str);
 }

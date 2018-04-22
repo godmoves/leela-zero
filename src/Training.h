@@ -75,6 +75,8 @@ public:
 
     static void dump_supervised(const std::string& sgf_file,
                                 const std::string& out_filename);
+    static void add_features(const std::string& training_file,
+                                const std::string& out_filename);
     static void save_training(const std::string& filename);
     static void load_training(const std::string& filename);
 

@@ -216,6 +216,14 @@ bool GTP::execute(GameState & game, std::string xinput) {
         transform_lowercase = false;
     }
 
+    if (xinput.find("add_features") != std::string::npos) {
+        transform_lowercase = false;
+    }
+
+    if (xinput.find("dump_supervised") != std::string::npos) {
+        transform_lowercase = false;
+    }
+
     /* eat empty lines, simple preprocessing, lower case */
     for (unsigned int tmp = 0; tmp < xinput.size(); tmp++) {
         if (xinput[tmp] == 9) {
@@ -876,6 +884,22 @@ bool GTP::execute(GameState & game, std::string xinput) {
         cmdstream >> tmp >> sgfname >> outname;
 
         Training::dump_supervised(sgfname, outname);
+
+        if (!cmdstream.fail()) {
+            gtp_printf(id, "");
+        } else {
+            gtp_fail_printf(id, "syntax not understood");
+        }
+
+        return true;
+    } else if (command.find("add_features") == 0) {
+        std::istringstream cmdstream(command);
+        std::string tmp, sgfname, outname;
+
+        // tmp will eat add_features
+        cmdstream >> tmp >> sgfname >> outname;
+
+        Training::add_features(sgfname, outname);
 
         if (!cmdstream.fail()) {
             gtp_printf(id, "");

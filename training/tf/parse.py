@@ -35,7 +35,7 @@ import unittest
 # You need to adjust the learning rate if you change this. Should be
 # a multiple of RAM_BATCH_SIZE. NB: It's rare that large batch sizes are
 # actually required.
-BATCH_SIZE = 512
+BATCH_SIZE = 128
 # Number of examples in a GPU batch. Higher values are more efficient.
 # The maximum depends on the amount of RAM in your GPU and the network size.
 # Must be smaller than BATCH_SIZE.
@@ -43,7 +43,11 @@ RAM_BATCH_SIZE = 128
 
 # Use a random sample input data read. This helps improve the spread of
 # games in the shuffle buffer.
-DOWN_SAMPLE = 16
+DOWN_SAMPLE = 32
+
+# Drop training move if max(policy)/PRUNE_FLAT_POLICY < random.uniform(0, 1).
+# Set to 0 to disable pruning.
+PRUNE_FLAT_POLICY= 0
 
 def get_chunks(data_prefix):
     return glob.glob(data_prefix + "*.gz")
@@ -102,6 +106,8 @@ def benchmark1(t):
 
 def split_chunks(chunks, test_ratio):
     splitpoint = 1 + int(len(chunks) * (1.0 - test_ratio))
+    if splitpoint >= len(chunks) - 1:
+        splitpoint = len(chunks) - 2
     return (chunks[:splitpoint], chunks[splitpoint:])
 
 def main():
@@ -120,6 +126,8 @@ def main():
         help="Log file prefix (for tensorboard)")
     parser.add_argument("--sample", default=DOWN_SAMPLE, type=int,
         help="Rate of data down-sampling to use")
+    parser.add_argument("--lr", default=0.05, type=float,
+        help="Learning rate")
     args = parser.parse_args()
 
     train_data_prefix = args.train or args.trainpref
@@ -129,7 +137,7 @@ def main():
     if not args.test:
         # Generate test by taking 10% of the training chunks.
         random.shuffle(training)
-        training, test = split_chunks(training, 0.1)
+        training, test = split_chunks(training, 0.05)
     else:
         test = get_chunks(args.test)
 
@@ -141,19 +149,22 @@ def main():
         len(training), len(test)))
 
     train_parser = ChunkParser(FileDataSrc(training),
-                               shuffle_size=1<<20, # 2.2GB of RAM.
+                               shuffle_size=1<<19, # 2.2GB of RAM.
                                sample=args.sample,
-                               batch_size=RAM_BATCH_SIZE).parse()
+                               batch_size=RAM_BATCH_SIZE,
+                               prune_flat_policy=PRUNE_FLAT_POLICY).parse()
 
     test_parser = ChunkParser(FileDataSrc(test),
-                              shuffle_size=1<<19,
+                              shuffle_size=1<<18,
                               sample=args.sample,
-                              batch_size=RAM_BATCH_SIZE).parse()
+                              batch_size=RAM_BATCH_SIZE,
+                              prune_flat_policy=PRUNE_FLAT_POLICY).parse()
 
     tfprocess = TFProcess()
     tfprocess.init(RAM_BATCH_SIZE,
                    logbase=args.logbase,
-                   macrobatch=BATCH_SIZE // RAM_BATCH_SIZE)
+                   macrobatch=BATCH_SIZE // RAM_BATCH_SIZE,
+                   lr = args.lr)
 
     #benchmark1(tfprocess)
 

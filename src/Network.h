@@ -67,8 +67,16 @@ public:
                          const int symmetry = -1,
                          const bool skip_cache = false);
 
+    // File format version
     static constexpr auto INPUT_MOVES = 8;
-    static constexpr auto INPUT_CHANNELS = 2 * INPUT_MOVES + 2;
+    static constexpr auto LIBERTY_PLANES = 4;
+
+    // History 2 * INPUT_MOVES
+    // Legal 1
+    // Liberties us 2 * LIBERTY_PLANES
+    // Ladder capture/escape 2
+    // Black/white to play 2
+    static constexpr auto INPUT_CHANNELS = 2 * INPUT_MOVES + 1 + 2 * LIBERTY_PLANES + 2 + 2;
     static constexpr auto OUTPUTS_POLICY = 2;
     static constexpr auto OUTPUTS_VALUE = 1;
 
@@ -115,6 +123,18 @@ private:
                                       std::vector<float>::iterator black,
                                       std::vector<float>::iterator white,
                                       const int symmetry);
+    static void legal_plane(const GameState* const state,
+                            std::vector<float>::iterator legal,
+                            const int symmetry);
+    static void fill_liberty_planes(const FullBoard& board,
+                                  std::vector<float>::iterator planes_black,
+                                  std::vector<float>::iterator planes_white,
+                                  const int plane_count,
+                                  const int symmetry);
+    static void fill_ladder_planes(const GameState* const state,
+                                 std::vector<float>::iterator captures,
+                                 std::vector<float>::iterator escapes,
+                                 const int symmetry);
     bool probe_cache(const GameState* const state, Network::Netresult& result);
     std::unique_ptr<ForwardPipe> m_forward;
 #ifdef USE_OPENCL_SELFCHECK
@@ -132,15 +152,23 @@ private:
 
     // Input + residual block tower
     std::vector<std::vector<float>> m_conv_weights;
-    std::vector<std::vector<float>> m_conv_biases;
+    std::vector<std::vector<float>> m_batchnorm_betas;
+    std::vector<std::vector<float>> m_batchnorm_gammas;
     std::vector<std::vector<float>> m_batchnorm_means;
-    std::vector<std::vector<float>> m_batchnorm_stddevs;
+    std::vector<std::vector<float>> m_batchnorm_stddivs;
+    std::vector<std::vector<float>> m_prelu_alphas;
+
+    std::vector<std::vector<float>> m_se_fc1_w;
+    std::vector<std::vector<float>> m_se_fc1_b;
+    std::vector<std::vector<float>> m_se_fc2_w;
+    std::vector<std::vector<float>> m_se_fc2_b;
 
     // Policy head
     std::vector<float> m_conv_pol_w;
     std::vector<float> m_conv_pol_b;
     std::array<float, 2> m_bn_pol_w1;
     std::array<float, 2> m_bn_pol_w2;
+    std::array<float, 2> m_prelu_pol_alpha;
 
     std::array<float, (BOARD_SQUARES + 1) * BOARD_SQUARES * 2> m_ip_pol_w;
     std::array<float, BOARD_SQUARES + 1> m_ip_pol_b;
@@ -150,6 +178,7 @@ private:
     std::vector<float> m_conv_val_b;
     std::array<float, 1> m_bn_val_w1;
     std::array<float, 1> m_bn_val_w2;
+    std::array<float, 1> m_prelu_val_alpha;
 
     std::array<float, BOARD_SQUARES * 256> m_ip1_val_w;
     std::array<float, 256> m_ip1_val_b;

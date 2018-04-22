@@ -29,6 +29,7 @@
 
 class FastBoard {
     friend class FastState;
+    friend class Ladder;
 public:
     /*
         neighbor counts are up to 4, so 3 bits is ok,
@@ -66,6 +67,8 @@ public:
     square_t get_square(int x, int y) const;
     square_t get_square(int vertex) const ;
     int get_vertex(int x, int y) const;
+    unsigned short get_liberties(int x, int y) const;
+    unsigned short get_liberties(int vertex) const ;
     void set_square(int x, int y, square_t content);
     void set_square(int vertex, square_t content);
     std::pair<int, int> get_xy(int vertex) const;
@@ -80,6 +83,7 @@ public:
     bool black_to_move() const;
     bool white_to_move() const;
     int get_to_move() const;
+    int get_not_to_move() const;
     void set_to_move(int color);
 
     std::string move_to_text(int move) const;
@@ -89,10 +93,12 @@ public:
 
     void reset_board(int size);
     void display_board(int lastmove = -1);
+    void display_liberties(int lastmove = -1);
 
     static bool starpoint(int size, int point);
     static bool starpoint(int size, int x, int y);
 
+    int get_square_neighbor(int vertex, int dir) const;
 protected:
     /*
         bit masks to detect eyes on neighbors
