@@ -32,7 +32,7 @@ def convolve(w, x, bn=None, bn_epsilon=1e-5):
         for c in range(inputs):
             res[o, :,
                 :] += signal.correlate2d(x[c, :, :], w[o, c, :, :], mode='same')
-    if bn == None:
+    if bn is None:
         return res
     bn_means = bn[0]
     bn_vars = bn[1]
@@ -72,7 +72,7 @@ def conv_bn_wider(weights, next_weights, inputs, channels,
     if new_channels == 0:
         return weights, next_weights
 
-    if rand == None:
+    if rand is None:
         rand = list(range(channels))
         rand.extend(np.random.randint(0, channels, new_channels))
     rep_factor = np.bincount(rand)
@@ -81,7 +81,7 @@ def conv_bn_wider(weights, next_weights, inputs, channels,
 
     # In the net2net paper every input weight was weighted equally,
     # but in general we can have unequal division of the weights
-    if dir_alpha == None:
+    if dir_alpha is None:
         # Equal division
         for i in range(len(rand)):
             factor[i] = 1.0 / rep_factor[rand[i]]
