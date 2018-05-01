@@ -1,10 +1,10 @@
 import os
 import time
-import numpy as np
 
+import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.layers import batch_norm
 from tensorflow.contrib.framework import arg_scope
+from tensorflow.contrib.layers import batch_norm
 
 # Define the hyper parameters
 # The settings below are approximately the same as 20b256f

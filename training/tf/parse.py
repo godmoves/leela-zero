@@ -17,19 +17,17 @@
 #    along with Leela Zero.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from tfprocess import TFProcess
-from chunkparser import ChunkParser
 import argparse
 import glob
 import gzip
 import multiprocessing as mp
 import os
 import random
-import shufflebuffer as sb
-import sys
-import tensorflow as tf
 import time
 import unittest
+
+from chunkparser import ChunkParser
+from tfprocess import TFProcess
 
 # Sane values are from 4096 to 64 or so.
 # You need to adjust the learning rate if you change this. Should be
@@ -45,16 +43,20 @@ RAM_BATCH_SIZE = 128
 # games in the shuffle buffer.
 DOWN_SAMPLE = 16
 
+
 def get_chunks(data_prefix):
     return glob.glob(data_prefix + "*.gz")
+
 
 class FileDataSrc:
     """
         data source yielding chunkdata from chunk files.
     """
+
     def __init__(self, chunks):
         self.chunks = []
         self.done = chunks
+
     def next(self):
         if not self.chunks:
             self.chunks, self.done = self.done, self.chunks
@@ -70,12 +72,13 @@ class FileDataSrc:
             except:
                 print("failed to parse {}".format(filename))
 
+
 def benchmark(parser):
     """
         Benchmark for parser
     """
     gen = parser.parse()
-    batch=100
+    batch = 100
     while True:
         start = time.time()
         for _ in range(batch):
@@ -84,16 +87,17 @@ def benchmark(parser):
         print("{} pos/sec {} secs".format(
             RAM_BATCH_SIZE * batch / (end - start), (end - start)))
 
+
 def benchmark1(t):
     """
         Benchmark for full input pipeline, including tensorflow conversion
     """
-    batch=100
+    batch = 100
     while True:
         start = time.time()
         for _ in range(batch):
             t.session.run([t.next_batch],
-                feed_dict={t.training: True, t.handle: t.train_handle})
+                          feed_dict={t.training: True, t.handle: t.train_handle})
 
         end = time.time()
         print("{} pos/sec {} secs".format(
@@ -104,22 +108,23 @@ def split_chunks(chunks, test_ratio):
     splitpoint = 1 + int(len(chunks) * (1.0 - test_ratio))
     return (chunks[:splitpoint], chunks[splitpoint:])
 
+
 def main():
     parser = argparse.ArgumentParser(
         description='Train network from game data.')
     parser.add_argument("trainpref",
-        help='Training file prefix', nargs='?', type=str)
+                        help='Training file prefix', nargs='?', type=str)
     parser.add_argument("restorepref",
-        help='Training snapshot prefix', nargs='?', type=str)
+                        help='Training snapshot prefix', nargs='?', type=str)
     parser.add_argument("--train", '-t',
-        help="Training file prefix", type=str)
+                        help="Training file prefix", type=str)
     parser.add_argument("--test", help="Test file prefix", type=str)
     parser.add_argument("--restore", type=str,
-        help="Prefix of tensorflow snapshot to restore from")
+                        help="Prefix of tensorflow snapshot to restore from")
     parser.add_argument("--logbase", default='leelalogs', type=str,
-        help="Log file prefix (for tensorboard)")
+                        help="Log file prefix (for tensorboard)")
     parser.add_argument("--sample", default=DOWN_SAMPLE, type=int,
-        help="Rate of data down-sampling to use")
+                        help="Rate of data down-sampling to use")
     args = parser.parse_args()
 
     train_data_prefix = args.train or args.trainpref
@@ -141,12 +146,12 @@ def main():
         len(training), len(test)))
 
     train_parser = ChunkParser(FileDataSrc(training),
-                               shuffle_size=1<<20, # 2.2GB of RAM.
+                               shuffle_size=1 << 20,  # 2.2GB of RAM.
                                sample=args.sample,
                                batch_size=RAM_BATCH_SIZE).parse()
 
     test_parser = ChunkParser(FileDataSrc(test),
-                              shuffle_size=1<<19,
+                              shuffle_size=1 << 19,
                               sample=args.sample,
                               batch_size=RAM_BATCH_SIZE).parse()
 
@@ -155,11 +160,12 @@ def main():
                    logbase=args.logbase,
                    macrobatch=BATCH_SIZE // RAM_BATCH_SIZE)
 
-    #benchmark1(tfprocess)
+    # benchmark1(tfprocess)
 
     if restore_prefix:
         tfprocess.restore(restore_prefix)
     tfprocess.process(train_parser, test_parser)
+
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')
@@ -168,13 +174,15 @@ if __name__ == "__main__":
 
 # Tests.
 # To run: python3 -m unittest parse.TestParse
+
+
 class TestParse(unittest.TestCase):
     def test_datasrc(self):
         # create chunk files
         num_chunks = 3
         chunks = []
         for x in range(num_chunks):
-            filename = '/tmp/parse-unittest-chunk'+str(x)+'.gz'
+            filename = '/tmp/parse-unittest-chunk' + str(x) + '.gz'
             chunk_file = gzip.open(filename, 'w', 1)
             chunk_file.write(bytes(x))
             chunk_file.close()
@@ -183,7 +191,7 @@ class TestParse(unittest.TestCase):
         # list of chunks.
         ds = FileDataSrc(list(chunks))
         # get sample of 200 chunks from the data src
-        counts={}
+        counts = {}
         for _ in range(200):
             data = ds.next()
             if data in counts:
