@@ -16,18 +16,18 @@
 #    You should have received a copy of the GNU General Public License
 #    along with Leela Zero.  If not, see <http://www.gnu.org/licenses/>.
 
-import binascii
-import glob
-import gzip
+# import binascii
+# import glob
+# import gzip
 import itertools
-import math
+# import math
 import multiprocessing as mp
-import queue
+# import queue
 import random
 import struct
-import sys
-import threading
-import time
+# import sys
+# import threading
+# import time
 import unittest
 
 import numpy as np
