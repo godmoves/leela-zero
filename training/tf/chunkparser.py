@@ -19,15 +19,15 @@
 # import binascii
 # import glob
 # import gzip
-import itertools
 # import math
-import multiprocessing as mp
 # import queue
-import random
-import struct
 # import sys
 # import threading
 # import time
+import itertools
+import multiprocessing as mp
+import random
+import struct
 import unittest
 
 import numpy as np
