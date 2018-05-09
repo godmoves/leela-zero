@@ -246,7 +246,7 @@ class TFProcess:
                 self.swa_accum_op = tf.assign_add(n, 1.)
             self.swa_load_op = tf.group(*load)
 
-        # Compute and accumulate gradients
+        # Accumulate gradients
         self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         total_grad = []
         grad_ops = []
@@ -320,13 +320,13 @@ class TFProcess:
         y_conv, z_conv = self.construct_net(x)
         # Calculate loss on policy head
         cross_entropy = \
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.y_,
-                                                    logits=self.y_conv)
+            tf.nn.softmax_cross_entropy_with_logits(labels=y_,
+                                                    logits=y_conv)
         policy_loss = tf.reduce_mean(cross_entropy)
 
         # Loss on value head
         mse_loss = \
-            tf.reduce_mean(tf.squared_difference(self.z_, self.z_conv))
+            tf.reduce_mean(tf.squared_difference(z_, z_conv))
 
         # Regularizer
         regularizer = tf.contrib.layers.l2_regularizer(scale=0.0001)
@@ -336,7 +336,7 @@ class TFProcess:
 
         # For training from a (smaller) dataset of strong players, you will
         # want to reduce the factor in front of self.mse_loss here.
-        loss = 1.0 * self.policy_loss + 1.0 * self.mse_loss + self.reg_term
+        loss = 1.0 * policy_loss + 1.0 * mse_loss + reg_term
 
         return loss, policy_loss, mse_loss, reg_term, y_conv
 
@@ -518,7 +518,7 @@ class TFProcess:
 
     def add_weights(self, variable):
         if self.reuse_var is None:
-            self.add_weights(variable)
+            self.weights.append(variable)
 
     def batch_norm(self, net):
         # The weights are internal to the batchnorm layer, so apply
