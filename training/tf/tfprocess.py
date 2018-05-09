@@ -126,7 +126,7 @@ class TFProcess:
         self.RESIDUAL_BLOCKS = 6
 
         # Set number of GPUs for training
-        self.gpus_num = 1
+        self.gpus_num = 2
 
         # For exporting
         self.weights = []

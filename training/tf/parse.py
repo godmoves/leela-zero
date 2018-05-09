@@ -37,7 +37,7 @@ BATCH_SIZE = 512
 # Number of examples in a GPU batch. Higher values are more efficient.
 # The maximum depends on the amount of RAM in your GPU and the network size.
 # Must be smaller than BATCH_SIZE.
-RAM_BATCH_SIZE = 128
+RAM_BATCH_SIZE = 256
 
 # Use a random sample input data read. This helps improve the spread of
 # games in the shuffle buffer.
