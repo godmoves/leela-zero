@@ -8,8 +8,8 @@ from tensorflow.contrib.layers import batch_norm
 
 # Define the hyper parameters
 # The settings below are approximately the same as 20b256f
-DEPTH = 64
-CADINALITY = 16
+BOTTLENECK_DEPTH = 64
+CARDINALITY = 16
 
 RESIDUL_FILTERS = 256
 RESIDUL_BLOCKS = 5
@@ -38,7 +38,7 @@ def conv_layer(input, filter, kernel, stride, padding='SAME', layer_name="conv")
         return network
 
 
-def Batch_Normalization(x, training, scope):
+def batch_normalization(inputs, training, scope):
     with arg_scope([batch_norm],
                    scope=scope,
                    updates_collections=None,
@@ -48,24 +48,24 @@ def Batch_Normalization(x, training, scope):
                    zero_debias_moving_mean=True):
         return tf.cond(training,
                        lambda: batch_norm(
-                           inputs=x, is_training=training, reuse=None),
-                       lambda: batch_norm(inputs=x, is_training=training, reuse=True))
+                           inputs=inputs, is_training=training, reuse=None),
+                       lambda: batch_norm(inputs=inputs, is_training=training, reuse=True))
 
 
-def Relu(x):
-    return tf.nn.relu(x)
+def relu(inputs):
+    return tf.nn.relu(inputs)
 
 
-def Concatenation(layers):
+def concatenation(layers):
     return tf.concat(layers, axis=3)
 
 
-class ResNeXt():
+class TFResNeXt():
     def __init__(self):
         self.residul_filters = RESIDUL_FILTERS
         self.residul_blocks = RESIDUL_BLOCKS
-        self.cadinality = CADINALITY
-        self.depth = DEPTH
+        self.cadinality = CARDINALITY
+        self.depth = BOTTLENECK_DEPTH
         self.learning_rate = LEARNING_RATE
 
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.75)
@@ -86,8 +86,7 @@ class ResNeXt():
         self.init_net(self.next_batch)
 
     def init_net(self, next_batch):
-        # tf.placeholder(tf.float32, [None, 18, 19 * 19])
-        self.x = next_batch[0]
+        self.x = next_batch[0]   # tf.placeholder(tf.float32, [None, 18, 19 * 19])
         self.y_ = next_batch[1]  # tf.placeholder(tf.float32, [None, 362])
         self.z_ = next_batch[2]  # tf.placeholder(tf.float32, [None, 1])
         # self.batch_norm_count = 0
@@ -221,61 +220,61 @@ class ResNeXt():
             # self.save_leelaz_weights(leela_path)
             # print("Leela weights saved to {}".format(leela_path))
 
-    def first_layer(self, x, scope='first_layer'):
+    def first_layer(self, inputs, scope='first_layer'):
         with tf.name_scope(scope):
-            x = conv_layer(x, filter=self.residul_filters, kernel=[
-                           3, 3], stride=1, layer_name=scope + '_conv1')
-            x = Batch_Normalization(
-                x, training=self.training, scope=scope + '_batch1')
-            x = Relu(x)
-            return x
+            inputs = conv_layer(inputs, filter=self.residul_filters,
+                                kernel=[3, 3], stride=1, layer_name=scope + '_conv1')
+            inputs = batch_normalization(
+                inputs, training=self.training, scope=scope + '_batch1')
+            inputs = relu(inputs)
+            return inputs
 
-    def final_layer(self, x, output_channels, scope):
+    def final_layer(self, inputs, output_channels, scope):
         with tf.name_scope(scope):
-            x = conv_layer(x, filter=output_channels, kernel=[
-                           1, 1], stride=1, layer_name=scope + '_conv1')
-            x = Batch_Normalization(
-                x, training=self.training, scope=scope + '_batch1')
-            x = Relu(x)
-            return x
+            inputs = conv_layer(inputs, filter=output_channels,
+                                kernel=[1, 1], stride=1, layer_name=scope + '_conv1')
+            inputs = batch_normalization(
+                inputs, training=self.training, scope=scope + '_batch1')
+            inputs = relu(inputs)
+            return inputs
 
-    def transform_layer(self, x, stride, scope):
+    def transform_layer(self, inputs, stride, scope):
         with tf.name_scope(scope):
-            x = conv_layer(x, filter=self.depth, kernel=[
-                           1, 1], stride=stride, layer_name=scope + '_conv1')
-            x = Batch_Normalization(
-                x, training=self.training, scope=scope + '_batch1')
-            x = Relu(x)
+            inputs = conv_layer(inputs, filter=self.depth,
+                                kernel=[1, 1], stride=stride, layer_name=scope + '_conv1')
+            inputs = batch_normalization(
+                inputs, training=self.training, scope=scope + '_batch1')
+            inputs = relu(inputs)
 
-            x = conv_layer(x, filter=self.depth, kernel=[
-                           3, 3], stride=1, layer_name=scope + '_conv2')
-            x = Batch_Normalization(
-                x, training=self.training, scope=scope + '_batch2')
-            x = Relu(x)
-            return x
+            inputs = conv_layer(inputs, filter=self.depth,
+                                kernel=[3, 3], stride=1, layer_name=scope + '_conv2')
+            inputs = batch_normalization(
+                inputs, training=self.training, scope=scope + '_batch2')
+            inputs = relu(inputs)
+            return inputs
 
-    def split_layer(self, input_x, stride, layer_name):
+    def split_layer(self, inputs, stride, layer_name):
         with tf.name_scope(layer_name):
             layers_split = list()
-            for i in range(CADINALITY):
+            for i in range(CARDINALITY):
                 splits = self.transform_layer(
-                    input_x, stride=stride, scope=layer_name + '_splitN_' + str(i))
+                    inputs, stride=stride, scope=layer_name + '_splitN_' + str(i))
                 layers_split.append(splits)
-            return Concatenation(layers_split)
+            return concatenation(layers_split)
 
     def transition_layer(self, x, scope):
         with tf.name_scope(scope):
             x = conv_layer(x, filter=self.residul_filters, kernel=[
                            1, 1], stride=1, layer_name=scope + '_conv1')
-            x = Batch_Normalization(
+            x = batch_normalization(
                 x, training=self.training, scope=scope + '_batch1')
             return x
 
-    def residul_layer(self, input_x, layer_num):
+    def residul_layer(self, inputs, layer_num):
         x = self.split_layer(
-            input_x, stride=1, layer_name='split_layer_' + str(layer_num))
+            inputs, stride=1, layer_name='split_layer_' + str(layer_num))
         x = self.transition_layer(x, scope='trans_layer_' + str(layer_num))
-        return Relu(x + input_x)
+        return relu(x + inputs)
 
     def construct_resnext(self, planes):
         x_planes = tf.reshape(planes, [-1, 18, 19, 19])
@@ -299,7 +298,7 @@ class ResNeXt():
         h_conv_val_flat = tf.reshape(conv_val, [-1, 19 * 19])
         W_fc2 = weight_variable([19 * 19, 256])
         b_fc2 = bias_variable([256])
-        h_fc2 = tf.nn.relu(tf.add(tf.matmul(h_conv_val_flat, W_fc2), b_fc2))
+        h_fc2 = relu(tf.add(tf.matmul(h_conv_val_flat, W_fc2), b_fc2))
         W_fc3 = weight_variable([256, 1])
         b_fc3 = bias_variable([1])
         h_fc3 = tf.nn.tanh(tf.add(tf.matmul(h_fc2, W_fc3), b_fc3))

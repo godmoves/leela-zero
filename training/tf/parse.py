@@ -27,7 +27,7 @@ import time
 import unittest
 
 from chunkparser import ChunkParser
-from tfprocess import TFProcess
+from tfresnext import TFResNeXt
 
 # Sane values are from 4096 to 64 or so.
 # You need to adjust the learning rate if you change this. Should be
@@ -155,7 +155,7 @@ def main():
                               sample=args.sample,
                               batch_size=RAM_BATCH_SIZE).parse()
 
-    tfprocess = TFProcess()
+    tfprocess = TFResNeXt()
     tfprocess.init(RAM_BATCH_SIZE,
                    logbase=args.logbase,
                    macrobatch=BATCH_SIZE // RAM_BATCH_SIZE)
