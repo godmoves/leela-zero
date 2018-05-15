@@ -16,24 +16,28 @@
 #    You should have received a copy of the GNU General Public License
 #    along with Leela Zero.  If not, see <http://www.gnu.org/licenses/>.
 
-import binascii
-import glob
-import gzip
+# import binascii
+# import glob
+# import gzip
+# import math
+# import queue
+# import sys
+# import threading
+# import time
+
 import itertools
-import math
 import multiprocessing as mp
-import numpy as np
-import queue
 import random
-import shufflebuffer as sb
 import struct
-import sys
-import threading
-import time
 import unittest
+
+import numpy as np
+
+import shufflebuffer as sb
 
 # 16 planes, 1 side to move, 1 x 362 probs, 1 winner = 19 lines
 DATA_ITEM_LINES = 16 + 1 + 1 + 1
+
 
 def remap_vertex(vertex, symmetry):
     """
@@ -52,13 +56,17 @@ def remap_vertex(vertex, symmetry):
     return y * 19 + x
 
 # Interface for a chunk data source.
+
+
 class ChunkDataSrc:
     def __init__(self, items):
         self.items = items
+
     def next(self):
         if not self.items:
             return None
         return self.items.pop()
+
 
 class ChunkParser:
     def __init__(self, chunkdatasrc, shuffle_size=1, sample=1,
@@ -100,20 +108,21 @@ class ChunkParser:
         # The last element is 'pass' and is identity mapped.
         self.prob_reflection_table = [
             [remap_vertex(vertex, sym)
-              for vertex in range(361)]+[361] for sym in range(8)]
+             for vertex in range(361)] + [361] for sym in range(8)]
         # Build full 16-plane reflection tables.
         self.full_reflection_table = [
             np.array([remap_vertex(vertex, sym) + p * 361
-                for p in range(16) for vertex in range(361)])
-                    for sym in range(8)]
+                      for p in range(16) for vertex in range(361)])
+            for sym in range(8)]
         # Convert both to np.array.
         # This avoids a conversion step when they're actually used.
         self.prob_reflection_table = [
-            np.array(x, dtype=np.int64) for x in self.prob_reflection_table ]
+            np.array(x, dtype=np.int64) for x in self.prob_reflection_table]
         self.full_reflection_table = [
-            np.array(x, dtype=np.int64) for x in self.full_reflection_table ]
+            np.array(x, dtype=np.int64) for x in self.full_reflection_table]
         # Build the all-zeros and all-ones flat planes, used for color-to-move.
-        self.flat_planes = [ b'\1'*361 + b'\0'*361, b'\0'*361 + b'\1'*361 ]
+        self.flat_planes = [b'\1' * 361 +
+                            b'\0' * 361, b'\0' * 361 + b'\1' * 361]
 
         # set the down-sampling rate
         self.sample = sample
@@ -178,8 +187,7 @@ class ChunkParser:
             # Remaining bit that didn't fit. Encoded LSB so
             # it needs to be specially handled.
             last_digit = text_item[plane][90]
-            if not (last_digit == "0" or last_digit == "1"):
-                return False, None
+            assert last_digit == "0" or last_digit == "1"
             # Apply symmetry and append
             planes.append(array)
             planes.append(np.array([last_digit], dtype=np.uint8))
@@ -191,8 +199,7 @@ class ChunkParser:
 
         # Get the 'side to move'
         stm = text_item[16][0]
-        if not(stm == "0" or stm == "1"):
-            return False, None
+        assert stm == "0" or stm == "1"
         stm = int(stm)
 
         # Load the probabilities.
@@ -201,17 +208,14 @@ class ChunkParser:
             # Work around a bug in leela-zero v0.3, skipping any
             # positions that have a NaN in the probabilities list.
             return False, None
-        if not(len(probabilities) == 362):
-            return False, None
+        assert len(probabilities) == 362
 
         probs = probabilities.tobytes()
-        if not(len(probs) == 362 * 4):
-            return False, None
+        assert(len(probs) == 362 * 4)
 
         # Load the game winner color.
         winner = float(text_item[18])
-        if not(winner == 1.0 or winner == -1.0):
-            return False, None
+        assert winner == 1.0 or winner == -1.0
         winner = int((winner + 1) / 2)
 
         version = struct.pack('i', 1)
@@ -231,7 +235,7 @@ class ChunkParser:
         # We use the full length reflection tables to apply symmetry
         # to all 16 planes simultaneously
         planes = planes[self.full_reflection_table[symmetry]]
-        assert len(planes) == 19*19*16
+        assert len(planes) == 19 * 19 * 16
         planes = np.packbits(planes)
         planes = planes.tobytes()
 
@@ -243,7 +247,6 @@ class ChunkParser:
 
         # repack record.
         return self.v2_struct.pack(ver, probs, planes, to_move, winner)
-
 
     def convert_v2_to_tuple(self, content):
         """
@@ -264,7 +267,7 @@ class ChunkParser:
         (ver, probs, planes, to_move, winner) = self.v2_struct.unpack(content)
         # Unpack planes.
         planes = np.unpackbits(np.frombuffer(planes, dtype=np.uint8))
-        assert len(planes) == 19*19*16
+        assert len(planes) == 19 * 19 * 16
         # Now we add the two final planes, being the 'color to move' planes.
         stm = to_move
         assert stm == 0 or stm == 1
@@ -284,24 +287,23 @@ class ChunkParser:
             v2 format records.
         """
         if chunkdata[0:4] == b'\1\0\0\0':
-            #print("V2 chunkdata")
+            # print("V2 chunkdata")
             for i in range(0, len(chunkdata), self.v2_struct.size):
                 if self.sample > 1:
                     # Downsample, using only 1/Nth of the items.
-                    if random.randint(0, self.sample-1) != 0:
+                    if random.randint(0, self.sample - 1) != 0:
                         continue  # Skip this record.
-                yield chunkdata[i:i+self.v2_struct.size]
+                yield chunkdata[i:i + self.v2_struct.size]
         else:
-            #print("V1 chunkdata")
+            # print("V1 chunkdata")
             file_chunkdata = chunkdata.splitlines()
 
-            result = []
             for i in range(0, len(file_chunkdata), DATA_ITEM_LINES):
                 if self.sample > 1:
                     # Downsample, using only 1/Nth of the items.
-                    if random.randint(0, self.sample-1) != 0:
+                    if random.randint(0, self.sample - 1) != 0:
                         continue  # Skip this record.
-                item = file_chunkdata[i:i+DATA_ITEM_LINES]
+                item = file_chunkdata[i:i + DATA_ITEM_LINES]
                 str_items = [str(line, 'ascii') for line in item]
                 success, data = self.convert_v1_to_v2(str_items)
                 if success:
@@ -331,7 +333,7 @@ class ChunkParser:
         """
         sbuff = sb.ShuffleBuffer(self.v2_struct.size, self.shuffle_size)
         while len(self.readers):
-            #for r in mp.connection.wait(self.readers):
+            # for r in mp.connection.wait(self.readers):
             for r in self.readers:
                 try:
                     s = r.recv_bytes()
@@ -367,9 +369,9 @@ class ChunkParser:
             s = list(itertools.islice(gen, self.batch_size))
             if not len(s):
                 return
-            yield ( b''.join([x[0] for x in s]),
-                    b''.join([x[1] for x in s]),
-                    b''.join([x[2] for x in s]) )
+            yield (b''.join([x[0] for x in s]),
+                   b''.join([x[1] for x in s]),
+                   b''.join([x[2] for x in s]))
 
     def parse(self):
         """
@@ -399,7 +401,7 @@ class ChunkParserTest(unittest.TestCase):
         # 2. 362 probs
         probs = np.random.randint(3, size=362).tolist()
         # 3. And a winner: 1 or -1
-        winner = [ 2 * float(np.random.randint(2)) - 1 ]
+        winner = [2 * float(np.random.randint(2)) - 1]
         return (planes, probs, winner)
 
     def test_parsing(self):
@@ -410,7 +412,7 @@ class ChunkParserTest(unittest.TestCase):
             through the parsing pipeline to final tensors,
             checking that what we get out is what we put in.
         """
-        batch_size=256
+        batch_size = 256
         # First, build a random game position.
         planes, probs, winner = self.generate_fake_pos()
 
@@ -433,7 +435,7 @@ class ChunkParserTest(unittest.TestCase):
         chunkdata = ''.join(items).encode('ascii')
 
         # feed batch_size copies into parser
-        chunkdatasrc = ChunkDataSrc([chunkdata for _ in range(batch_size*2)])
+        chunkdatasrc = ChunkDataSrc([chunkdata for _ in range(batch_size * 2)])
         parser = ChunkParser(chunkdatasrc,
                              shuffle_size=1, workers=1, batch_size=batch_size)
 
@@ -442,12 +444,12 @@ class ChunkParserTest(unittest.TestCase):
         data = next(batchgen)
 
         # Convert batch to python lists.
-        batch = ( np.reshape(np.frombuffer(data[0], dtype=np.uint8),
-                             (batch_size, 18, 19*19)).tolist(),
-                  np.reshape(np.frombuffer(data[1], dtype=np.float32),
-                             (batch_size, 19*19+1)).tolist(),
-                  np.reshape(np.frombuffer(data[2], dtype=np.float32),
-                             (batch_size, 1)).tolist() )
+        batch = (np.reshape(np.frombuffer(data[0], dtype=np.uint8),
+                            (batch_size, 18, 19 * 19)).tolist(),
+                 np.reshape(np.frombuffer(data[1], dtype=np.float32),
+                            (batch_size, 19 * 19 + 1)).tolist(),
+                 np.reshape(np.frombuffer(data[2], dtype=np.float32),
+                            (batch_size, 1)).tolist())
 
         # Check that every record in the batch is a some valid symmetry
         # of the original data.
@@ -461,10 +463,10 @@ class ChunkParserTest(unittest.TestCase):
                 sym_planes = [
                     [plane[remap_vertex(vertex, symmetry)]
                         for vertex in range(361)]
-                            for plane in planes]
+                    for plane in planes]
                 sym_probs = [
                     probs[remap_vertex(vertex, symmetry)]
-                        for vertex in range(361)] + [probs[361]]
+                    for vertex in range(361)] + [probs[361]]
 
                 if symmetry == 0:
                     assert sym_planes == planes
@@ -475,11 +477,12 @@ class ChunkParserTest(unittest.TestCase):
                     result = True
                     break
             # Check that there is at least one matching symmetry.
-            assert result == True
+            assert result is True
         print("Test parse passes")
         # drain parser
         for _ in batchgen:
             pass
+
 
 if __name__ == '__main__':
     unittest.main()
