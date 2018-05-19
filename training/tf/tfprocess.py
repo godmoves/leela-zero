@@ -163,11 +163,13 @@ class TFProcess:
             gpus_num = self.gpus_num
         self.init_net(planes, probs, winner, gpus_num)
 
+
     def init_net(self, planes, probs, winner, gpus_num):
         self.y_ = probs   # (tf.float32, [None, 362])
         self.sx = tf.split(planes, gpus_num)
         self.sy_ = tf.split(probs, gpus_num)
         self.sz_ = tf.split(winner, gpus_num)
+
         self.batch_norm_count = 0
         self.reuse_var = None
 
