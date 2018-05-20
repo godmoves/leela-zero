@@ -262,13 +262,13 @@ class TFResNeXt():
                 layers_split.append(splits)
             return concatenation(layers_split)
 
-    def transition_layer(self, x, scope):
+    def transition_layer(self, inputs, scope):
         with tf.name_scope(scope):
-            x = conv_layer(x, filter=self.residul_filters, kernel=[
-                           1, 1], stride=1, layer_name=scope + '_conv1')
-            x = batch_normalization(
-                x, training=self.training, scope=scope + '_batch1')
-            return x
+            inputs = conv_layer(inputs, filter=self.residul_filters,
+                                kernel=[1, 1], stride=1, layer_name=scope + '_conv1')
+            inputs = batch_normalization(
+                inputs, training=self.training, scope=scope + '_batch1')
+            return inputs
 
     def residul_layer(self, inputs, layer_num):
         x = self.split_layer(
