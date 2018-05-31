@@ -8,3 +8,5 @@ training/tf/venv
 leelaz-model*
 *.orig
 leelaz_opencl_tuning
+scripts/leelaz*
+scripts/__pycache__

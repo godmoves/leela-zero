@@ -87,8 +87,12 @@ class TFProcess:
         config = tf.ConfigProto(gpu_options=gpu_options)
         self.session = tf.Session(config=config)
 
-        self.training = tf.placeholder(tf.bool)
+        # self.training = tf.placeholder(tf.bool)
+        self.training = False
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
+
+        self.batch_norm_count = 0
+
 
     def init(self, dataset, train_iterator, test_iterator):
         # TF variables
@@ -104,7 +108,6 @@ class TFProcess:
         self.x = next_batch[0]  # tf.placeholder(tf.float32, [None, 18, 19 * 19])
         self.y_ = next_batch[1] # tf.placeholder(tf.float32, [None, 362])
         self.z_ = next_batch[2] # tf.placeholder(tf.float32, [None, 1])
-        self.batch_norm_count = 0
         self.y_conv, self.z_conv = self.construct_net(self.x)
 
         if self.swa_enabled == True:
