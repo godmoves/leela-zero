@@ -1,0 +1,17 @@
+(;FF[4]CA[UTF-8]AP[gogui-twogtp:1.4.9]
+KM[6.5]PB[Gtp Player]PW[GodMoves]DT[2017-10-12]
+C[Black command: ../RocAlphaGo/greddy_player.py
+White command: ../GodMoves/run_go.sh 0906
+Black version: 0.0
+White version: v0.1
+Result[Black\]: 
+Result[White\]: ?
+Host: dell-inspiron-7548 (Intel(R) Core(TM) i5-5200U CPU @ 2.20GHz)
+Date: October 12, 2017 7:24:14 PM CST]
+;B[pc];W[pp];B[cd];W[dp];B[qn];W[nq];B[qj];W[qe];B[qg];W[ed]
+;B[df];W[cc];B[bc];W[dc];B[hd];W[fe];B[be];W[fg];B[gf];W[dg]
+;B[cg];W[dh];B[ch];W[di];B[cj];W[md];B[od];W[jc];B[je];W[nb]
+;B[kc];W[kb];B[lc];W[jd];B[ke];W[kd];B[ld];W[le];B[lb];W[mc]
+;B[jb];W[ib];B[ka];W[ic];B[hc];W[hb];B[gb];W[gc];B[gd];W[fc]
+;B[mb];W[ie];B[id];W[jf];B[kf];W[pg];B[qh];W[pi];B[pj];W[qc]
+;B[qb])

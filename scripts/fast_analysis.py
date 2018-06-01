@@ -101,7 +101,7 @@ def position_to_feature(positions):
     return feature_plane
 
 
-positions = sgf_to_position("/home/pwjtc/Work/GodMoves/sgf/sgf-GM-RG-0.sgf")
+positions = sgf_to_position("./sgf-GM-RG-0.sgf")
 f_plane = position_to_feature(positions)
 print(np.shape(f_plane))
 
