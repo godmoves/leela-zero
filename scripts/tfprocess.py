@@ -219,7 +219,8 @@ class TFProcess:
 
     def restore(self, file):
         print("Restoring from {0}".format(file))
-        optimistic_restore(self.session, file)
+        # optimistic_restore(self.session, file)
+        self.saver.restore(self.session, file)
 
     def process(self, batch_size):
         if not self.time_start:
@@ -448,7 +449,7 @@ class TFProcess:
         b_fc1 = bias_variable([(19 * 19) + 1])
         self.weights.append(W_fc1)
         self.weights.append(b_fc1)
-        h_fc1 = tf.add(tf.matmul(h_conv_pol_flat, W_fc1), b_fc1)
+        h_fc1 = tf.nn.softmax(tf.add(tf.matmul(h_conv_pol_flat, W_fc1), b_fc1))
 
         # Value head
         conv_val = self.conv_block(flow, filter_size=1,

@@ -1,4 +1,4 @@
-(;FF[4]CA[UTF-8]AP[gogui-twogtp:1.4.9]
+(;FF[4]CA[UTF-8]AP[GoGui:1.4.9]
 KM[6.5]PB[Gtp Player]PW[GodMoves]DT[2017-10-12]
 C[Black command: ../RocAlphaGo/greddy_player.py
 White command: ../GodMoves/run_go.sh 0906
@@ -14,4 +14,10 @@ Date: October 12, 2017 7:24:14 PM CST]
 ;B[kc];W[kb];B[lc];W[jd];B[ke];W[kd];B[ld];W[le];B[lb];W[mc]
 ;B[jb];W[ib];B[ka];W[ic];B[hc];W[hb];B[gb];W[gc];B[gd];W[fc]
 ;B[mb];W[ie];B[id];W[jf];B[kf];W[pg];B[qh];W[pi];B[pj];W[qc]
-;B[qb])
+;B[qb];W[em];B[fk];W[in];B[hp];W[gq];B[fo];W[gm];B[hl];W[il]
+;B[jm];W[jp];B[kn];W[lo];B[lm];W[kl];B[ik];W[hi];B[lj];W[mk]
+;B[mm];W[no];B[ok];W[mh];B[nl];W[om];B[ql];W[nh];B[mj];W[ih]
+;B[ij];W[dl];B[cp];W[fp];B[dm];W[cm];B[cn];W[eo];B[fn];W[fm]
+;B[fl];W[ek];B[gj];W[fj];B[ki];W[kk];B[jj];W[kh];B[li];W[lh]
+;B[nj];W[nf];B[ph];W[ri];B[sp];W[qq];B[ir];W[jq];B[lq];W[kr]
+;B[js])
