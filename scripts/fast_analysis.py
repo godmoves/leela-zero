@@ -8,7 +8,8 @@ import tensorflow as tf
 from tfprocess import TFProcess
 
 
-BATCH_SZIE = 64  # TODO: using batch to avoid OOM
+# TODO: using batch to avoid OOM
+BATCH_SZIE = 64
 
 
 def get_position(board):
@@ -94,11 +95,9 @@ def position_to_feature(positions):
         back_move = min(i, 8)
         move_color = player_color
         for b in range(back_move):
-            plane[0, index[2 * b], :,
-                  :] = get_plane(positions[i - b], move_color, player_color)
+            plane[0, index[2 * b], :, :] = get_plane(positions[i - b], move_color, player_color)
             move_color = opp_color(move_color)
-            plane[0, index[2 * b + 1], :,
-                  :] = get_plane(positions[i - b], move_color, player_color)
+            plane[0, index[2 * b + 1], :, :] = get_plane(positions[i - b], move_color, player_color)
             move_color = opp_color(move_color)
 
         if player_color == 'b':
@@ -175,7 +174,7 @@ def main():
         start = clock()
         for i in range(100):
             p, v = sess.run([polocy, value], feed_dict={inputs: f_plane})
-            print(p)            # (-1, 362): move probabilities, 361 point + pass
+            print(p)            # (-1, 362): move probabilities, 361 points + pass
             print((v + 1) / 2)  # (-1, 1):   this is winrate at each move
         finish = clock()
         print("Time per Kifu:", (finish - start) / 100)
