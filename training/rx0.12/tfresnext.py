@@ -11,7 +11,7 @@ from tensorflow.contrib.layers import batch_norm
 BOTTLENECK_DEPTH = 64
 CARDINALITY = 1
 
-RESIDUL_FILTERS = 256
+RESIDUL_FILTERS = 128
 RESIDUL_BLOCKS = 5
 
 LEARNING_RATE = 0.1
@@ -31,25 +31,34 @@ def bias_variable(shape):
     return tf.Variable(initial)
 
 
-def conv_layer(input, filter, kernel, stride, padding='SAME', layer_name="conv"):
-    with tf.name_scope(layer_name):
-        network = tf.layers.conv2d(inputs=input, use_bias=False, filters=filter,
-                                   kernel_size=kernel, strides=stride, padding=padding)
-        return network
+def bn_bias_variable(shape):
+    initial = tf.constant(0.0, shape=shape)
+    return tf.Variable(initial, trainable=False)
 
 
-def batch_normalization(inputs, training, scope):
-    with arg_scope([batch_norm],
-                   scope=scope,
-                   updates_collections=None,
-                   decay=0.9,
-                   center=True,
-                   scale=True,
-                   zero_debias_moving_mean=True):
-        return tf.cond(training,
-                       lambda: batch_norm(
-                           inputs=inputs, is_training=training, reuse=None),
-                       lambda: batch_norm(inputs=inputs, is_training=training, reuse=True))
+# def conv_layer(input, filter, kernel, stride, padding='SAME', layer_name="conv"):
+#     with tf.name_scope(layer_name):
+#         network = tf.layers.conv2d(inputs=input, use_bias=False, filters=filter, data_format='channels_first',
+#                                    kernel_size=kernel, strides=stride, padding=padding)
+#         return network
+
+def conv2d(x, W):
+    return tf.nn.conv2d(x, W, data_format='NCHW',
+                        strides=[1, 1, 1, 1], padding='SAME')
+
+
+# def batch_normalization(inputs, training, scope):
+#     with arg_scope([batch_norm],
+#                    scope=scope,
+#                    updates_collections=None,
+#                    decay=0.9,
+#                    center=True,
+#                    scale=True,
+#                    zero_debias_moving_mean=True):
+#         return tf.cond(training,
+#                        lambda: batch_norm(
+#                            inputs=inputs, is_training=training, reuse=None),
+#                        lambda: batch_norm(inputs=inputs, is_training=training, reuse=True))
 
 
 def relu(inputs):
@@ -89,7 +98,7 @@ class TFResNeXt():
         self.x = next_batch[0]   # tf.placeholder(tf.float32, [None, 18, 19 * 19])
         self.y_ = next_batch[1]  # tf.placeholder(tf.float32, [None, 362])
         self.z_ = next_batch[2]  # tf.placeholder(tf.float32, [None, 1])
-        # self.batch_norm_count = 0
+        self.batch_norm_count = 0
         self.y_conv, self.z_conv = self.construct_resnext(self.x)
 
         # Calculate loss on policy head
@@ -220,36 +229,74 @@ class TFResNeXt():
             # self.save_leelaz_weights(leela_path)
             # print("Leela weights saved to {}".format(leela_path))
 
+    def get_batchnorm_key(self):
+        result = "bn" + str(self.batch_norm_count)
+        self.batch_norm_count += 1
+        return result
+
     def first_layer(self, inputs, scope='first_layer'):
         with tf.name_scope(scope):
-            inputs = conv_layer(inputs, filter=self.residul_filters,
-                                kernel=[3, 3], stride=1, layer_name=scope + '_conv1')
-            inputs = batch_normalization(
-                inputs, training=self.training, scope=scope + '_batch1')
+            # inputs = conv_layer(inputs, filter=self.residul_filters,
+            #                     kernel=[3, 3], stride=1, layer_name=scope + '_conv1')
+            # inputs = batch_normalization(
+            #     inputs, training=self.training, scope=scope + '_batch1')
+            W_conv = weight_variable([3, 3, 18, self.residul_filters])
+            # b_conv = bn_bias_variable([self.residul_filters])
+            weight_key = self.get_batchnorm_key()
+            with tf.variable_scope(weight_key):
+                inputs = tf.layers.batch_normalization(
+                    conv2d(inputs, W_conv),
+                    epsilon=1e-5, axis=1, fused=True,
+                    center=False, scale=False,
+                    training=self.training)
             inputs = relu(inputs)
             return inputs
 
     def final_layer(self, inputs, output_channels, scope):
         with tf.name_scope(scope):
-            inputs = conv_layer(inputs, filter=output_channels,
-                                kernel=[1, 1], stride=1, layer_name=scope + '_conv1')
-            inputs = batch_normalization(
-                inputs, training=self.training, scope=scope + '_batch1')
+            # inputs = conv_layer(inputs, filter=output_channels,
+            #                     kernel=[1, 1], stride=1, layer_name=scope + '_conv1')
+            # inputs = batch_normalization(
+            #     inputs, training=self.training, scope=scope + '_batch1')
+            W_conv = weight_variable([1, 1, self.residul_filters, output_channels])
+            weight_key = self.get_batchnorm_key()
+            with tf.variable_scope(weight_key):
+                inputs = tf.layers.batch_normalization(
+                    conv2d(inputs, W_conv),
+                    epsilon=1e-5, axis=1, fused=True,
+                    center=False, scale=False,
+                    training=self.training)
             inputs = relu(inputs)
             return inputs
 
     def transform_layer(self, inputs, stride, scope):
         with tf.name_scope(scope):
-            inputs = conv_layer(inputs, filter=self.depth,
-                                kernel=[1, 1], stride=stride, layer_name=scope + '_conv1')
-            inputs = batch_normalization(
-                inputs, training=self.training, scope=scope + '_batch1')
+            # inputs = conv_layer(inputs, filter=self.depth,
+            #                     kernel=[1, 1], stride=stride, layer_name=scope + '_conv1')
+            # inputs = batch_normalization(
+            #     inputs, training=self.training, scope=scope + '_batch1')
+            W_conv_1 = weight_variable([1, 1, self.residul_filters, self.depth])
+            weight_key = self.get_batchnorm_key()
+            with tf.variable_scope(weight_key):
+                inputs = tf.layers.batch_normalization(
+                    conv2d(inputs, W_conv_1),
+                    epsilon=1e-5, axis=1, fused=True,
+                    center=False, scale=False,
+                    training=self.training)
             inputs = relu(inputs)
 
-            inputs = conv_layer(inputs, filter=self.depth,
-                                kernel=[3, 3], stride=1, layer_name=scope + '_conv2')
-            inputs = batch_normalization(
-                inputs, training=self.training, scope=scope + '_batch2')
+            # inputs = conv_layer(inputs, filter=self.depth,
+            #                     kernel=[3, 3], stride=1, layer_name=scope + '_conv2')
+            # inputs = batch_normalization(
+            #     inputs, training=self.training, scope=scope + '_batch2')
+            W_conv_2 = weight_variable([1, 1, self.depth, self.depth])
+            weight_key = self.get_batchnorm_key()
+            with tf.variable_scope(weight_key):
+                inputs = tf.layers.batch_normalization(
+                    conv2d(inputs, W_conv_2),
+                    epsilon=1e-5, axis=1, fused=True,
+                    center=False, scale=False,
+                    training=self.training)
             inputs = relu(inputs)
             return inputs
 
@@ -263,11 +310,20 @@ class TFResNeXt():
             return concatenation(layers_split)
 
     def transition_layer(self, inputs, scope):
+        input_dim = int(inputs.get_shape()[1])
         with tf.name_scope(scope):
-            inputs = conv_layer(inputs, filter=self.residul_filters,
-                                kernel=[1, 1], stride=1, layer_name=scope + '_conv1')
-            inputs = batch_normalization(
-                inputs, training=self.training, scope=scope + '_batch1')
+            # inputs = conv_layer(inputs, filter=self.residul_filters,
+            #                     kernel=[1, 1], stride=1, layer_name=scope + '_conv1')
+            # inputs = batch_normalization(
+            #     inputs, training=self.training, scope=scope + '_batch1')
+            W_conv = weight_variable([1, 1, input_dim, self.residul_filters])
+            weight_key = self.get_batchnorm_key()
+            with tf.variable_scope(weight_key):
+                inputs = tf.layers.batch_normalization(
+                    conv2d(inputs, W_conv),
+                    epsilon=1e-5, axis=1, fused=True,
+                    center=False, scale=False,
+                    training=self.training)
             return inputs
 
     def residul_layer(self, inputs, layer_num):
@@ -279,7 +335,7 @@ class TFResNeXt():
     def construct_resnext(self, planes):
         x_planes = tf.reshape(planes, [-1, 18, 19, 19])
         # NCHW -> NHWC
-        x_planes = tf.transpose(x_planes, [0, 2, 3, 1])
+        # x_planes = tf.transpose(x_planes, [0, 2, 3, 1])
 
         x = self.first_layer(x_planes)
 
