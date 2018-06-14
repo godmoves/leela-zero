@@ -14,3 +14,17 @@ training/tf/venv
 leelaz-model*
 *.orig
 leelaz_opencl_tuning
+
+/training/rx0.12/__pycache__/tfresnext.cpython-36.pyc
+
+/scripts/__pycache__/
+
+/training/rx0.12/leelazlogs/
+
+/training/rx0.12/models/
+
+/training/rx0.12/tfresnext (copy).py
+
+/training/rx0.12/__pycache__/tfresnext.cpython-36.pyc
+
+/training/rx0.12/__pycache__/tfresnext.cpython-36.pyc

@@ -8,8 +8,8 @@ from tensorflow.contrib.layers import batch_norm
 
 # Define the hyper parameters
 # The settings below are approximately the same as 20b256f
-BOTTLENECK_DEPTH = 64
-CARDINALITY = 1
+BOTTLENECK_DEPTH = 4
+CARDINALITY = 64
 
 RESIDUL_FILTERS = 128
 RESIDUL_BLOCKS = 5
@@ -66,7 +66,7 @@ def relu(inputs):
 
 
 def concatenation(layers):
-    return tf.concat(layers, axis=3)
+    return tf.concat(layers, axis=1)
 
 
 class TFResNeXt():
