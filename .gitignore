@@ -4,27 +4,18 @@ leelaz
 .vscode/settings.json
 training/tf/leelalogs
 training/tf/checkpoint
-training/rx0.12/leelalogs
-training/rx0.12/checkpoint
-training/rx0.12/__pycache__
-training/rx0.13/leelalogs
-training/rx0.13/checkpoint
-training/rx0.13/__pycache__
 training/tf/venv
 leelaz-model*
 *.orig
 leelaz_opencl_tuning
 
-/training/rx0.12/__pycache__/tfresnext.cpython-36.pyc
+training/rx0.12/models/
+training/rx0.12/leelazlogs
+training/rx0.12/checkpoint
+training/rx0.12/__pycache__
+training/rx0.13/leelazlogs
+training/rx0.13/checkpoint
+training/rx0.13/__pycache__
 
 /scripts/__pycache__/
-
-/training/rx0.12/leelazlogs/
-
-/training/rx0.12/models/
-
 /training/rx0.12/tfresnext (copy).py
-
-/training/rx0.12/__pycache__/tfresnext.cpython-36.pyc
-
-/training/rx0.12/__pycache__/tfresnext.cpython-36.pyc
