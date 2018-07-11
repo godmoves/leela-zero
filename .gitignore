@@ -5,6 +5,8 @@ leelaz
 training/tf/leelalogs
 training/tf/checkpoint
 training/tf/venv
+training/tf/__pycache__
 leelaz-model*
 *.orig
 leelaz_opencl_tuning
+

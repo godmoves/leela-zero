@@ -108,7 +108,7 @@ class Timer:
 class TFProcess:
     def __init__(self):
         # Network structure
-        self.RESIDUAL_FILTERS = 128
+        self.RESIDUAL_FILTERS = 64
         self.RESIDUAL_BLOCKS = 6
 
         # Set number of GPUs for training
@@ -194,7 +194,8 @@ class TFProcess:
                         self.reset_batchnorm_key()
 
                         tf.get_variable_scope().reuse_variables()
-                        grads = opt.compute_gradients(loss)
+                        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+                            grads = opt.compute_gradients(loss)
 
                         tower_grads.append(grads)
                         tower_loss.append(loss)
@@ -234,12 +235,11 @@ class TFProcess:
             self.swa_load_op = tf.group(*load)
 
         # Accumulate gradients
-        self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         total_grad=[]
         grad_ops=[]
         clear_var=[]
-        with tf.control_dependencies(self.update_ops):
-            self.grad_op_real = self.mean_grads
+        self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        self.grad_op_real = self.mean_grads
         for (g, v) in self.grad_op_real:
             if g is None:
                 total_grad.append((g,v))
@@ -421,13 +421,15 @@ class TFProcess:
                 self.train_writer.add_summary(
                     tf.Summary(value=summaries), steps)
                 stats.clear()
+                print("Train step", steps, losses)  ##########################
 
-            if steps % 8000 == 0:
+            if steps % 3000 == 0:
                 test_stats = Stats()
                 test_batches = 800 # reduce sample mean variance by ~28x
-                for _ in range(0, test_batches):
+                for i in range(0, test_batches):
                     test_batch = next(test_data)
                     losses = self.measure_loss(test_batch, training=False)
+                    print("Test loss", i, losses)  ###########################
                     test_stats.add(losses)
                 summaries = test_stats.summaries({'Policy Loss': 'policy',
                                                   'MSE Loss': 'mse',
