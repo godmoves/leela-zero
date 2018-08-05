@@ -143,8 +143,6 @@ void FastState::display_state() {
              board.get_prisoners(FastBoard::WHITE));
 
     board.display_board(get_last_move());
-
-    Ladder::display_ladders(*this);
 }
 
 std::string FastState::move_to_text(int move) {

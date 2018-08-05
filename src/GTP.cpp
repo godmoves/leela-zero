@@ -156,6 +156,8 @@ const std::string GTP::s_commands[] = {
     "play",
     "genmove",
     "showboard",
+    "showladders",
+    "showliberties",
     "undo",
     "final_score",
     "final_status_list",
@@ -508,6 +510,14 @@ bool GTP::execute(GameState & game, std::string xinput) {
     } else if (command.find("showboard") == 0) {
         gtp_printf(id, "");
         game.display_state();
+        return true;
+    } else if (command.find("showladders") == 0) {
+        gtp_printf(id, "");
+        game.display_ladders();
+        return true;
+    } else if (command.find("showliberties") == 0) {
+        gtp_printf(id, "");
+        game.display_liberties();
         return true;
     } else if (command.find("final_score") == 0) {
         float ftmp = game.final_score();

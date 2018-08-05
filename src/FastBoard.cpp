@@ -328,8 +328,6 @@ void FastBoard::display_board(int lastmove) {
     myprintf("   ");
     print_columns();
     myprintf("\n");
-
-    display_liberties(lastmove);
 }
 
 
