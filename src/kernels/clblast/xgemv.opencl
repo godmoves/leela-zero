@@ -39,7 +39,29 @@ R"(
 INLINE_FUNC real LoadMatrixA(const __global real* restrict agm, const int x, const int y,
                              const int a_ld, const int a_offset) {
 
+#ifdef FP16_STORAGE
+  return vloada_half(a_ld*y + x + a_offset, (const __global half*)agm);
+#else
   return agm[a_ld*y + x + a_offset];
+#endif
+}
+
+INLINE_FUNC real LoadValue(const __global real* restrict x, const int offset) {
+
+#ifdef FP16_STORAGE
+  return vloada_half(offset, (const __global half*)x);
+#else
+  return x[offset];
+#endif
+}
+
+INLINE_FUNC void StoreValue(__global real* restrict y, const int offset, const real value) {
+
+#ifdef FP16_STORAGE
+  vstorea_half(value, offset, (__global half*)y);
+#else
+  y[offset] = value;
+#endif
 }
 
 // =================================================================================================
@@ -71,7 +93,7 @@ void Xgemv(const int m, const int n,
 
     // Loads the vector X into local memory
     const int lid = get_local_id(0);
-    xlm[lid] = xgm[(kwg + lid) + x_offset];
+    xlm[lid] = LoadValue(xgm, (kwg + lid) + x_offset);
 
     // Synchronizes all threads in a workgroup
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -107,15 +129,16 @@ void Xgemv(const int m, const int n,
       // The multiply-add function for the remainder part (not divisable by WGS1)
       for (int k=n_floor; k<n; ++k) {
         real value = LoadMatrixA(agm, k, gid, a_ld, a_offset);
-        MultiplyAdd(acc1[_w], xgm[k + x_offset], value);
+        const real x_k = LoadValue(xgm, k + x_offset);
+        MultiplyAdd(acc1[_w], x_k, value);
       }
 
       // Stores the final result
-	  real out = acc1[_w] + bias[gid + y_offset];
+	  real out = acc1[_w] + LoadValue(bias, gid + y_offset);
 	  if (relu) {
 	    out = out > 0.0f ? out : 0.0f;
 	  }
-      ygm[gid + y_offset] = out;
+      StoreValue(ygm, gid + y_offset, out);
     }
   }
 }
