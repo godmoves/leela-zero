@@ -35,11 +35,11 @@ import unittest
 # You need to adjust the learning rate if you change this. Should be
 # a multiple of RAM_BATCH_SIZE. NB: It's rare that large batch sizes are
 # actually required.
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 # Number of examples in a GPU batch. Higher values are more efficient.
 # The maximum depends on the amount of RAM in your GPU and the network size.
 # Must be smaller than BATCH_SIZE.
-RAM_BATCH_SIZE = 128
+RAM_BATCH_SIZE = 256
 
 # Use a random sample input data read. This helps improve the spread of
 # games in the shuffle buffer.
@@ -47,7 +47,7 @@ DOWN_SAMPLE = 32
 
 # Drop training move if max(policy)/PRUNE_FLAT_POLICY < random.uniform(0, 1).
 # Set to 0 to disable pruning.
-PRUNE_FLAT_POLICY= 0
+PRUNE_FLAT_POLICY = 0
 
 def get_chunks(data_prefix):
     return glob.glob(data_prefix + "*.gz")
@@ -67,6 +67,11 @@ class FileDataSrc:
             return None
         while len(self.chunks):
             filename = self.chunks.pop()
+            # Downsample ELF games
+            if "train_62b5417b" in filename:
+                if random.random() > 0.4:
+                    self.done.append(filename)
+                    continue
             try:
                 with gzip.open(filename, 'rb') as chunk_file:
                     self.done.append(filename)
@@ -137,7 +142,7 @@ def main():
     if not args.test:
         # Generate test by taking 10% of the training chunks.
         random.shuffle(training)
-        training, test = split_chunks(training, 0.05)
+        training, test = split_chunks(training, 0.10)
     else:
         test = get_chunks(args.test)
 
