@@ -50,7 +50,15 @@ sources = Network.cpp FullBoard.cpp KoState.cpp Training.cpp \
 	  SGFParser.cpp Timing.cpp Utils.cpp FastBoard.cpp \
 	  SGFTree.cpp Zobrist.cpp FastState.cpp GTP.cpp Random.cpp \
 	  SMP.cpp UCTNode.cpp UCTNodePointer.cpp UCTNodeRoot.cpp \
-	  OpenCL.cpp OpenCLScheduler.cpp NNCache.cpp Tuner.cpp
+	  OpenCL.cpp OpenCLScheduler.cpp NNCache.cpp Tuner.cpp \
+	  Ray/Command.cpp Ray/PatternHash.cpp Ray/Seki.cpp \
+	  Ray/DynamicKomi.cpp Ray/Point.cpp	Ray/Semeai.cpp \
+	  Ray/GoBoard.cpp Ray/Rating.cpp Ray/Simulation.cpp \
+	  Ray/Ladder.cpp Ray/RayGtp.cpp	Ray/UctRating.cpp \
+	  Ray/Message.cpp Ray/Utility.cpp Ray/SearchBoard.cpp\
+	  Ray/Nakade.cpp Ray/RayUctSearch.cpp Ray/ZobristHash.cpp \
+	  Ray/Pattern.cpp
+
 
 objects = $(sources:.cpp=.o)
 deps = $(sources:%.cpp=%.d)
