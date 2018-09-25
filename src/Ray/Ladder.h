@@ -3,8 +3,7 @@
 
 #include "GoBoard.h"
 
-// 
-void LadderExtension( game_info_t *game, int color, bool *ladder_pos );
-// 
-bool CheckLadderExtension( game_info_t *game, int color, int pos );
+void LadderExtension(game_info_t *game, int color, bool *ladder_pos);
+
+bool CheckLadderExtension(game_info_t *game, int color, int pos);
 #endif

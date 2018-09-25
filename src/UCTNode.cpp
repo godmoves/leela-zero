@@ -80,21 +80,20 @@ bool UCTNode::create_children(std::atomic<int>& nodecount,
     m_is_expanding = true;
     lock.unlock();
 
+    // ladder checker from Ray
     game_info_t *game = AllocateGame();
     InitializeBoard(game);
     for (int row = 0; row < 19; ++row) {
         for (int col = 0; col < 19; ++col) {
             auto vertex = state.board.get_vertex(col, row);
             auto stone = state.board.get_square(vertex);
-            if (stone < 2)
-            {
+            if (stone < 2) {
                 PutStone(game, POS(col + BOARD_START, row + BOARD_START), stone ? S_WHITE : S_BLACK);
             }
         }
     }
     bool ladder[BOARD_MAX] = { false };
     LadderExtension(game, state.board.black_to_move() ? S_BLACK : S_WHITE, ladder);
-
     FreeGame(game);
 
     const auto raw_netlist = Network::get_scored_moves(

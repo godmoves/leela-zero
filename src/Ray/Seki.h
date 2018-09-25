@@ -3,7 +3,6 @@
 
 #include "GoBoard.h"
 
-// 
-void CheckSeki( const game_info_t *game, bool seki[] );
+void CheckSeki(const game_info_t *game, bool seki[]);
 
 #endif

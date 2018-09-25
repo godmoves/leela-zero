@@ -1,9 +1,9 @@
-#include <cstdio>
-#include <cstring>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
-#include <iostream>
+#include <cstring>
 #include <iomanip>
+#include <iostream>
 
 #include "Message.h"
 #include "Point.h"
@@ -11,29 +11,16 @@
 
 using namespace std;
 
-
 bool debug_message = true;
 
+void SetDebugMessageMode(const bool flag) { debug_message = flag; }
 
-////////////////////////////////////
-//    //
-////////////////////////////////////
-void
-SetDebugMessageMode( const bool flag )
-{
-  debug_message = flag;
-}
-
-//////////////////
-//    //
-//////////////////
-void
-PrintBoard( const game_info_t *game )
-{
-  const char stone[S_MAX] = { '+', 'B', 'W', '#' };
+void PrintBoard(const game_info_t *game) {
+  const char stone[S_MAX] = {'+', 'B', 'W', '#'};
   int i, x, y, pos;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   cerr << "Prisoner(Black) : " << game->prisoner[S_BLACK] << endl;
   cerr << "Prisoner(White) : " << game->prisoner[S_WHITE] << endl;
@@ -67,37 +54,31 @@ PrintBoard( const game_info_t *game )
   cerr << "+" << endl;
 }
 
-
-/////////////////////////////////
-//                //
-//    ,           //
-//    ,   //
-/////////////////////////////////
-void
-PrintString( const game_info_t *game )
-{
+void PrintString(const game_info_t *game) {
   const string_t *string = game->string;
   int i, pos, neighbor;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   cerr << "  :: :: String :: ::" << endl;
 
-  for (i = 0; i < MAX_STRING; i++){
+  for (i = 0; i < MAX_STRING; i++) {
     if (string[i].flag) {
       if (game->board[string[i].origin] == S_BLACK) {
-	cerr << "Black String   ";
+        cerr << "Black String   ";
       } else {
-	cerr << "White String   ";
+        cerr << "White String   ";
       }
-      cerr << "ID : " << i << " (libs : " << string[i].libs << ", size : " << string[i].size << ")" << endl;
+      cerr << "ID : " << i << " (libs : " << string[i].libs
+           << ", size : " << string[i].size << ")" << endl;
       pos = string[i].lib[0];
 
       cerr << "  Liberty : " << endl;
       cerr << "  ";
       while (pos != STRING_END) {
-	cerr << GOGUI_X(pos) << GOGUI_Y(pos) << " ";
-	pos = string[i].lib[pos];
+        cerr << GOGUI_X(pos) << GOGUI_Y(pos) << " ";
+        pos = string[i].lib[pos];
       }
       cerr << endl;
 
@@ -105,19 +86,21 @@ PrintString( const game_info_t *game )
       cerr << "  Stone : " << endl;
       cerr << "    ";
       while (pos != STRING_END) {
-	cerr << GOGUI_X(pos) << GOGUI_Y(pos) << " ";
-	pos = game->string_next[pos];
-	if (pos == game->string_next[pos]) getchar();
+        cerr << GOGUI_X(pos) << GOGUI_Y(pos) << " ";
+        pos = game->string_next[pos];
+        if (pos == game->string_next[pos])
+          getchar();
       }
       cerr << endl;
 
       neighbor = string[i].neighbor[0];
-      if (neighbor == 0) getchar();
+      if (neighbor == 0)
+        getchar();
       cerr << "  Neighbor : " << endl;
       cerr << "    ";
       while (neighbor < NEIGHBOR_END) {
-	cerr << neighbor << " ";
-	neighbor = string[i].neighbor[neighbor];
+        cerr << neighbor << " ";
+        neighbor = string[i].neighbor[neighbor];
       }
       cerr << endl;
     }
@@ -126,16 +109,11 @@ PrintString( const game_info_t *game )
   cerr << endl;
 }
 
-
-//////////////////////////
-//  ID  //
-//////////////////////////
-void
-PrintStringID( const game_info_t *game )
-{
+void PrintStringID(const game_info_t *game) {
   int i, x, y, pos;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   cerr << "    ";
   for (i = 1, y = board_start; y <= board_end; y++, i++) {
@@ -148,10 +126,9 @@ PrintStringID( const game_info_t *game )
     for (x = board_start; x <= board_end; x++) {
       pos = x + y * board_size;
       if (game->string[game->string_id[pos]].flag) {
-	cerr << " " << setw(3) << game->string_id[pos];
-      }
-      else {
-	cerr << "   -";
+        cerr << " " << setw(3) << game->string_id[pos];
+      } else {
+        cerr << "   -";
       }
     }
     cerr << endl;
@@ -159,16 +136,11 @@ PrintStringID( const game_info_t *game )
   cerr << endl;
 }
 
-
-///////////////////////////////////////
-//  (Debug)  //
-///////////////////////////////////////
-void
-PrintStringNext( const game_info_t *game )
-{
+void PrintStringNext(const game_info_t *game) {
   int i, x, y, pos;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   cerr << "    ";
   for (i = 1, y = board_start; y <= board_end; y++, i++) {
@@ -181,13 +153,13 @@ PrintStringNext( const game_info_t *game )
     for (x = board_start; x <= board_end; x++) {
       pos = x + y * board_size;
       if (game->string[game->string_id[pos]].flag) {
-	if (game->string_next[pos] != STRING_END) {
-	  cerr << setw(3) << game->string_next[pos];
-	} else {
-	  cerr << " END";
-	}
+        if (game->string_next[pos] != STRING_END) {
+          cerr << setw(3) << game->string_next[pos];
+        } else {
+          cerr << " END";
+        }
       } else {
-	cerr << "   -";
+        cerr << "   -";
       }
     }
     cerr << endl;
@@ -196,20 +168,15 @@ PrintStringNext( const game_info_t *game )
   cerr << endl;
 }
 
-
-///////////////////
-//  Owner  //
-///////////////////
-void
-PrintOwner( const uct_node_t *root, const int color, double *own )
-{
+void PrintOwner(const uct_node_t *root, const int color, double *own) {
   int i, pos, x, y;
   double owner;
   int player = 0, opponent = 0;
   double score;
   const statistic_t *statistic = root->statistic;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   cerr << "   ";
   for (i = 1, y = board_start; y <= board_end; y++, i++) {
@@ -228,9 +195,9 @@ PrintOwner( const uct_node_t *root, const int color, double *own )
       pos = POS(x, y);
       owner = (double)statistic[pos].colors[color] / root->move_count;
       if (owner > 0.5) {
-	player++;
+        player++;
       } else {
-	opponent++;
+        opponent++;
       }
       own[pos] = owner * 100.0;
       cerr << setw(3) << (int)(owner * 100) << " ";
@@ -263,13 +230,8 @@ PrintOwner( const uct_node_t *root, const int color, double *own )
   }
 }
 
-
-///////////////////////
-//    //
-///////////////////////
-void
-PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const int root, const int start_color )
-{
+void PrintBestSequence(const game_info_t *game, const uct_node_t *uct_node,
+                       const int root, const int start_color) {
   game_info_t *search_result;
   int current = root;
   int index = -1;
@@ -279,7 +241,8 @@ PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const in
   int child_num;
   const child_node_t *uct_child;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   search_result = AllocateGame();
   CopyGame(search_result, game);
@@ -296,11 +259,14 @@ PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const in
     }
   }
 
-  if (uct_child[index].pos == PASS) cerr << "PASS";
-  else cerr << GOGUI_X(uct_child[index].pos) << GOGUI_Y(uct_child[index].pos);
-  if (node_hash[current].color == S_BLACK) cerr << "(BLACK : ";
-  else if (node_hash[current].color == S_WHITE) cerr << "(WHITE : ";
-
+  if (uct_child[index].pos == PASS)
+    cerr << "PASS";
+  else
+    cerr << GOGUI_X(uct_child[index].pos) << GOGUI_Y(uct_child[index].pos);
+  if (node_hash[current].color == S_BLACK)
+    cerr << "(BLACK : ";
+  else if (node_hash[current].color == S_WHITE)
+    cerr << "(WHITE : ";
 
   PutStone(search_result, uct_child[index].pos, color);
   color = FLIP_COLOR(color);
@@ -308,7 +274,7 @@ PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const in
   cerr << uct_child[index].win << "/" << uct_child[index].move_count << ")";
 
   current = uct_child[index].index;
-  
+
   while (current != NOT_EXPANDED) {
     uct_child = uct_node[current].child;
     child_num = uct_node[current].child_num;
@@ -318,20 +284,25 @@ PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const in
 
     for (i = 0; i < child_num; i++) {
       if (uct_child[i].move_count > max) {
-	max = uct_child[i].move_count;
-	index = i;
+        max = uct_child[i].move_count;
+        index = i;
       }
     }
 
-    if (index == -1) break;
+    if (index == -1)
+      break;
 
     cerr << "->";
 
-    if (uct_child[index].pos == PASS) cerr << "PASS";
-    else cerr << GOGUI_X(uct_child[index].pos) << GOGUI_Y(uct_child[index].pos);
+    if (uct_child[index].pos == PASS)
+      cerr << "PASS";
+    else
+      cerr << GOGUI_X(uct_child[index].pos) << GOGUI_Y(uct_child[index].pos);
 
-    if (node_hash[current].color == S_BLACK) cerr << "(BLACK : ";
-    else if (node_hash[current].color == S_WHITE) cerr << "(WHITE : ";
+    if (node_hash[current].color == S_BLACK)
+      cerr << "(BLACK : ";
+    else if (node_hash[current].color == S_WHITE)
+      cerr << "(WHITE : ";
 
     PutStone(search_result, uct_child[index].pos, color);
 
@@ -340,7 +311,6 @@ PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const in
     cerr << uct_child[index].win << "/" << uct_child[index].move_count << ")";
 
     current = uct_child[index].index;
-
   }
 
   cerr << endl;
@@ -349,35 +319,29 @@ PrintBestSequence( const game_info_t *game, const uct_node_t *uct_node, const in
   FreeGame(search_result);
 }
 
-
-///////////////////////
-//    //
-///////////////////////
-void
-PrintPlayoutInformation( const uct_node_t *root, const po_info_t *po_info, const double finish_time, const int pre_simulated )
-{
+void PrintPlayoutInformation(const uct_node_t *root, const po_info_t *po_info,
+                             const double finish_time,
+                             const int pre_simulated) {
   double winning_percentage = (double)root->win / root->move_count;
 
-  if (!debug_message) return ;
+  if (!debug_message)
+    return;
 
   cerr << "All Playouts       :  " << setw(7) << root->move_count << endl;
   cerr << "Pre Simulated      :  " << setw(7) << pre_simulated << endl;
   cerr << "Win                :  " << setw(7) << root->win << endl;
   cerr << "Thinking Time      :  " << setw(7) << finish_time << " sec" << endl;
-  cerr << "Winning Percentage :  " << setw(7) << (winning_percentage * 100) << "%" << endl;
+  cerr << "Winning Percentage :  " << setw(7) << (winning_percentage * 100)
+       << "%" << endl;
   if (finish_time != 0.0) {
-    cerr << "Playout Speed      :  " << setw(7) << (int)(po_info->count / finish_time) << " PO/sec " << endl;
+    cerr << "Playout Speed      :  " << setw(7)
+         << (int)(po_info->count / finish_time) << " PO/sec " << endl;
   }
 }
 
-
-//////////////////
-//    //
-//////////////////
-void
-PrintPoint( const int pos )
-{
-  if (!debug_message) return ;
+void PrintPoint(const int pos) {
+  if (!debug_message)
+    return;
 
   if (pos == PASS) {
     cerr << "PASS" << endl;
@@ -388,50 +352,31 @@ PrintPoint( const int pos )
   }
 }
 
-
-/////////////////////
-//    //
-/////////////////////
-void
-PrintKomiValue( void )
-{
-  if (!debug_message) return ;
+void PrintKomiValue(void) {
+  if (!debug_message)
+    return;
 
   cerr << "Dynamic Komi : " << setw(4) << dynamic_komi[0] << endl;
 }
 
-
-////////////////////////////////////////
-//  Pondering  //
-////////////////////////////////////////
-void
-PrintPonderingCount( const int count )
-{
-  if (!debug_message) return ;
+void PrintPonderingCount(const int count) {
+  if (!debug_message)
+    return;
 
   cerr << "Ponder : " << count << " Playouts" << endl;
 }
 
-
-//////////////////////
-//    //
-/////////////////////
-void
-PrintPlayoutLimits( const double time_limit, const int playout_limit )
-{
-  if (!debug_message) return ;
+void PrintPlayoutLimits(const double time_limit, const int playout_limit) {
+  if (!debug_message)
+    return;
 
   cerr << "Time Limit    : " << time_limit << " Sec" << endl;
-  cerr << "Playout Limit : " << playout_limit << " PO" << endl; 
+  cerr << "Playout Limit : " << playout_limit << " PO" << endl;
 }
 
-////////////////////////////////////////
-//  Pondering  //
-////////////////////////////////////////
-void
-PrintReuseCount( const int count )
-{
-  if (!debug_message) return ;
+void PrintReuseCount(const int count) {
+  if (!debug_message)
+    return;
 
   cerr << "Reuse : " << count << " Playouts" << endl;
 }

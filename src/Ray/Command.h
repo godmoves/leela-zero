@@ -1,9 +1,6 @@
 #ifndef _COMMAND_H_
 #define _COMMAND_H_
 
-////////////
-//    //
-////////////
 enum COMMAND {
   COMMAND_PLAYOUT,
   COMMAND_TIME,
@@ -20,12 +17,6 @@ enum COMMAND {
   COMMAND_MAX,
 };
 
-
-////////////
-//    //
-////////////
-
-// 
-void AnalyzeCommand( int argc, char **argv );
+void AnalyzeCommand(int argc, char **argv);
 
 #endif

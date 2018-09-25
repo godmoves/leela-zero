@@ -1,20 +1,14 @@
-#include <iostream>
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
 
 #include "Utility.h"
 
 using namespace std;
 
-
-////////////////////////////
-//   (float)  //
-////////////////////////////
-void
-InputTxtFLT( const char *filename, float *ap, const int array_size )
-{
+void InputTxtFLT(const char *filename, float *ap, const int array_size) {
   FILE *fp;
-#if defined (_WIN32)
+#if defined(_WIN32)
   errno_t err;
 
   err = fopen_s(&fp, filename, "r");
@@ -41,15 +35,9 @@ InputTxtFLT( const char *filename, float *ap, const int array_size )
 #endif
 }
 
-
-/////////////////////////////
-//   (double)  //
-/////////////////////////////
-void
-InputTxtDBL( const char *filename, double *ap, const int array_size )
-{
+void InputTxtDBL(const char *filename, double *ap, const int array_size) {
   FILE *fp;
-#if defined (_WIN32)
+#if defined(_WIN32)
   errno_t err;
 
   err = fopen_s(&fp, filename, "r");
