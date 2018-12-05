@@ -38,6 +38,9 @@
 #include "Network.h"
 #include "Utils.h"
 
+#include "Ray/GoBoard.h"
+#include "Ray/Ladder.h"
+
 using namespace Utils;
 
 UCTNode::UCTNode(int vertex, float policy) : m_move(vertex), m_policy(policy) {
@@ -68,6 +71,22 @@ bool UCTNode::create_children(Network & network,
         return false;
     }
 
+    game_info_t *game = AllocateGame();
+    InitializeBoard(game);
+    for (int row = 0; row < 19; ++row) {
+        for (int col = 0; col < 19; ++col) {
+            auto vertex = state.board.get_vertex(col, row);
+            auto stone = state.board.get_square(vertex);
+            if (stone < 2)
+            {
+                PutStone(game, POS(col + BOARD_START, row + BOARD_START), stone ? S_WHITE : S_BLACK);
+            }
+        }
+    }
+    bool ladder[BOARD_MAX] = { false };
+    LadderExtension(game, state.board.black_to_move() ? S_BLACK : S_WHITE, ladder);
+    FreeGame(game);
+
     const auto raw_netlist = network.get_output(
         &state, Network::Ensemble::RANDOM_SYMMETRY);
 
@@ -87,7 +106,10 @@ bool UCTNode::create_children(Network & network,
         const auto x = i % BOARD_SIZE;
         const auto y = i / BOARD_SIZE;
         const auto vertex = state.board.get_vertex(x, y);
-        if (state.is_move_legal(to_move, vertex)) {
+        const auto xy = state.board.get_xy(vertex);
+        if (state.is_move_legal(to_move, vertex &&
+            !ladder[POS(xy.first + BOARD_START, xy.second + BOARD_START)])) {
+
             nodelist.emplace_back(raw_netlist.policy[i], vertex);
             legal_sum += raw_netlist.policy[i];
         }

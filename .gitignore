@@ -11,3 +11,7 @@ leelaz_opencl_tuning
 /build-autogtp-*
 /build-validation-*
 .vs/
+
+build/
+src/elf_v1.gz
+*.swp
