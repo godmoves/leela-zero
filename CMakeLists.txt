@@ -87,7 +87,7 @@ if(USE_HALF)
 endif()
 
 set(IncludePath "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/src/Eigen" "${CMAKE_CURRENT_SOURCE_DIR}/src/Ray")
-set(SrcPath "${CMAKE_CURRENT_SOURCE_DIR}/src" )
+set(SrcPath "${CMAKE_CURRENT_SOURCE_DIR}/src/Ray" "${CMAKE_CURRENT_SOURCE_DIR}/src" )
 
 include_directories(${IncludePath})
 include_directories(${Boost_INCLUDE_DIRS})
