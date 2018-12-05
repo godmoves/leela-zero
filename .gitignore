@@ -13,5 +13,5 @@ leelaz_opencl_tuning
 .vs/
 
 build/
-src/elf_v1.gz
+elf_v1.gz
 *.swp

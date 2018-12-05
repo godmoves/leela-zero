@@ -87,7 +87,8 @@ if(USE_HALF)
 endif()
 
 set(IncludePath "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/src/Eigen" "${CMAKE_CURRENT_SOURCE_DIR}/src/Ray")
-set(SrcPath "${CMAKE_CURRENT_SOURCE_DIR}/src/Ray" "${CMAKE_CURRENT_SOURCE_DIR}/src" )
+set(SrcPath "${CMAKE_CURRENT_SOURCE_DIR}/src" )
+set(RaySrcPath "${CMAKE_CURRENT_SOURCE_DIR}/src/Ray" )
 
 include_directories(${IncludePath})
 include_directories(${Boost_INCLUDE_DIRS})
@@ -102,7 +103,7 @@ if(APPLE)
 endif()
 
 set(leelaz_MAIN "${SrcPath}/Leela.cpp")
-file(GLOB leelaz_SRC "${SrcPath}/*.cpp")
+file(GLOB leelaz_SRC "${SrcPath}/*.cpp" "${RaySrcPath}/*.cpp")
 list(REMOVE_ITEM leelaz_SRC ${leelaz_MAIN})
 
 # Reuse for leelaz and gtest

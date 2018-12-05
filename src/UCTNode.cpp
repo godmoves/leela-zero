@@ -77,8 +77,7 @@ bool UCTNode::create_children(Network & network,
         for (int col = 0; col < 19; ++col) {
             auto vertex = state.board.get_vertex(col, row);
             auto stone = state.board.get_state(vertex);
-            if (stone < 2)
-            {
+            if (stone < 2) {
                 PutStone(game, POS(col + BOARD_START, row + BOARD_START), stone ? S_WHITE : S_BLACK);
             }
         }
