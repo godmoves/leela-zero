@@ -106,8 +106,8 @@ bool UCTNode::create_children(Network & network,
         const auto y = i / BOARD_SIZE;
         const auto vertex = state.board.get_vertex(x, y);
         const auto xy = state.board.get_xy(vertex);
-        if (state.is_move_legal(to_move, vertex &&
-            !ladder[POS(xy.first + BOARD_START, xy.second + BOARD_START)])) {
+        if (state.is_move_legal(to_move, vertex) &&
+            !ladder[POS(xy.first + BOARD_START, xy.second + BOARD_START)]) {
 
             nodelist.emplace_back(raw_netlist.policy[i], vertex);
             legal_sum += raw_netlist.policy[i];
