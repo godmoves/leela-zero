@@ -92,8 +92,9 @@ static void parse_commandline(int argc, char *argv[]) {
         ("full-tuner", "Try harder to find an optimal OpenCL tuning.")
         ("tune-only", "Tune OpenCL only and then exit.")
 #ifdef USE_HALF
-        ("precision", po::value<std::string>(), "Floating-point precision (single/half/auto).\n"
-                                                "Default is to auto which automatically determines which one to use.")
+        ("precision", po::value<std::string>(),
+            "Floating-point precision (single/half/auto).\n"
+            "Default is to auto which automatically determines which one to use.")
 #endif
         ;
 #endif
@@ -111,6 +112,11 @@ static void parse_commandline(int argc, char *argv[]) {
         ("randomtemp",
             po::value<float>()->default_value(cfg_random_temp),
             "Temperature to use for random move selection.")
+        ("winratetarget",
+            po::value<int>()->default_value(cfg_winrate_target),
+            "Require engine to search for weaker moves that maintain a winrate of x%, regardless of the strength of the engine's opponent. Valid arguments are any integer from 0 to 100.\n"
+            "100 is unmodified search, playing strongest moves as usual.\n"
+            "50 forces a perfectly tied 50% winrate game against its opponent.")
         ;
 #ifdef USE_TUNER
     po::options_description tuner_desc("Tuning options");
@@ -218,6 +224,11 @@ static void parse_commandline(int argc, char *argv[]) {
 
     if (vm.count("full-tuner")) {
         cfg_sgemm_exhaustive = true;
+
+        // --full-tuner auto-implies --tune-only.  The full tuner is so slow
+        // that nobody will wait for it to finish befure running a game.
+        // This simply prevents some edge cases from confusing other people.
+        cfg_tune_only = true;
     }
 
     if (vm.count("tune-only")) {
@@ -235,6 +246,14 @@ static void parse_commandline(int argc, char *argv[]) {
             cfg_precision = precision_t::AUTO;
         } else {
             printf("Unexpected option for --precision, expecting single/half/auto\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (cfg_precision == precision_t::AUTO) {
+        // Auto precision is not supported for full tuner cases.
+        if (cfg_sgemm_exhaustive) {
+            printf("Automatic precision not supported when doing exhaustive tuning\n");
+            printf("Please add '--precision single' or '--precision half'\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -314,6 +333,14 @@ static void parse_commandline(int argc, char *argv[]) {
 
     if (vm.count("randomtemp")) {
         cfg_random_temp = vm["randomtemp"].as<float>();
+    }
+
+    if (vm.count("winratetarget")) {
+        cfg_winrate_target = vm["winratetarget"].as<int>();
+        // 0 to 100 are the only meaningful values. Default to 100% (unmodified search) if invalid input.
+        if ((cfg_winrate_target > 100) || (cfg_winrate_target < 0)) {
+            cfg_winrate_target = 100;
+        }
     }
 
     if (vm.count("timemanage")) {
