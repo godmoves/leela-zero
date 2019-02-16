@@ -30,6 +30,8 @@
 #include "GameState.h"
 #include "Network.h"
 
+#include "TRTNetwork.h"
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -275,7 +277,7 @@ bool GameState::valid_handicap(int handicap) {
     return true;
 }
 
-void GameState::place_free_handicap(int stones, Network & network) {
+void GameState::place_free_handicap(int stones, TRTNetwork & network) {
     int limit = board.get_boardsize() * board.get_boardsize();
     if (stones > limit / 2) {
         stones = limit / 2;

@@ -82,11 +82,10 @@ static std::array<std::array<int, NUM_INTERSECTIONS>,
 class Logger : public ILogger {
     void log(Severity severity, const char *msg) override {
         switch (severity) {
-            case Severity::kINTERNAL_ERROR: myprintf("kINTERNAL_ERROR: %s", msg); break;
-            case Severity::kERROR: myprintf("kERROR: %s", msg); break;
-            case Severity::kWARNING: myprintf("kWARNING: %s", msg); break;
-            // not log info
-            // case Severity::kINFO: LOG(INFO) << msg; break;
+            case Severity::kINTERNAL_ERROR: myprintf("kINTERNAL_ERROR: %s\n", msg); break;
+            case Severity::kERROR: myprintf("kERROR: %s\n", msg); break;
+            case Severity::kWARNING: myprintf("kWARNING: %s\n", msg); break;
+            case Severity::kINFO: break;
         }
     }
 } g_logger;
@@ -150,9 +149,9 @@ void TRTNetwork::benchmark(const GameState* const state, const int iterations) {
 }
 
 void TRTNetwork::initialize(int playouts, const std::string & weightsfile) {
-    myprintf("Using TensorRT kernel on GPU %d\n.", m_gpu);
+    myprintf("Using TensorRT kernel on GPU %d.\n", m_gpu);
 #ifdef USE_HALF
-    myprintf("Using half precision.");
+    myprintf("Using half precision.\n");
 #endif
 
     // set which GPU to use
@@ -199,7 +198,7 @@ void TRTNetwork::initialize(int playouts, const std::string & weightsfile) {
     m_builder->setMaxWorkspaceSize(1 << 30);
     // set half precision
 #ifdef USE_HALF
-    m_builder->setHalf2Mode(true);
+    //m_builder->setHalf2Mode(true);
 #endif
 
     m_engine = m_builder->buildCudaEngine(*m_net);
@@ -212,7 +211,7 @@ void TRTNetwork::initialize(int playouts, const std::string & weightsfile) {
 
     for (int i = 0; i < m_engine->getNbBindings(); ++i) {
         auto dim = m_engine->getBindingDimensions(i);
-        std::string dim_str = "(";
+        std::string dim_str = " (";
         int size = 1;
         for (int i = 0; i < dim.nbDims; ++i) {
             if (i)
@@ -221,7 +220,7 @@ void TRTNetwork::initialize(int playouts, const std::string & weightsfile) {
             size *= dim.d[i];
         }
         dim_str += ")";
-        myprintf("tensorrt binding: %s %s\n", m_engine->getBindingName(i), dim_str);
+        std::cerr << "tensorrt binding: " << m_engine->getBindingName(i) << dim_str << std::endl;
 
         void *buf;
         int ret = cudaMalloc(&buf, m_batch_size * size * sizeof(float));
@@ -318,8 +317,6 @@ TRTNetwork::Netresult TRTNetwork::get_output(
 TRTNetwork::Netresult TRTNetwork::get_output_internal(
     const GameState* const state, const int symmetry, bool selfcheck) {
     assert(symmetry >= 0 && symmetry < NUM_SYMMETRIES);
-    constexpr auto width = BOARD_SIZE;
-    constexpr auto height = BOARD_SIZE;
 
     Netresult result;
 
@@ -330,7 +327,7 @@ TRTNetwork::Netresult TRTNetwork::get_output_internal(
                          inputs_data.size() * sizeof(float),
                          cudaMemcpyHostToDevice);
     if (ret != 0) {
-        myprintf("input cuda memcpy err %d", ret);
+        myprintf("inputs cuda memcpy err %d\n", ret);
         return result;
     }
 
@@ -344,7 +341,7 @@ TRTNetwork::Netresult TRTNetwork::get_output_internal(
                    value.size() * sizeof(float),
                    cudaMemcpyDeviceToHost);
     if (ret != 0) {
-        myprintf("value cuda memcpy err %d", ret);
+        myprintf("value cuda memcpy err %d\n", ret);
         return result;
     }
 
@@ -353,7 +350,7 @@ TRTNetwork::Netresult TRTNetwork::get_output_internal(
                    policy.size() * sizeof(float),
                    cudaMemcpyDeviceToHost);
     if (ret != 0) {
-        myprintf("policy cuda memcpy err %d", ret);
+        myprintf("policy cuda memcpy err %d\n", ret);
         return result;
     }
 

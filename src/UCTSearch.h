@@ -43,6 +43,7 @@
 #include "GameState.h"
 #include "UCTNode.h"
 #include "Network.h"
+#include "TRTNetwork.h"
 
 
 class SearchResult {
@@ -107,7 +108,7 @@ public:
     static constexpr auto UNLIMITED_PLAYOUTS =
         std::numeric_limits<int>::max() / 2;
 
-    UCTSearch(GameState& g, Network & network);
+    UCTSearch(GameState& g, TRTNetwork & network);
     int think(int color, passflag_t passflag = NORMAL);
     void set_playout_limit(int playouts);
     void set_visit_limit(int visits);
@@ -146,7 +147,7 @@ private:
 
     std::list<Utils::ThreadGroup> m_delete_futures;
 
-    Network & m_network;
+    TRTNetwork & m_network;
 };
 
 class UCTWorker {

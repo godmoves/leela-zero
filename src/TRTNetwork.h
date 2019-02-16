@@ -121,6 +121,6 @@ private:
     // TODO: fix elf network later
     bool m_value_head_not_stm{false}; // this is for elf network
     // TODO: fix batch size later
-    int m_batch_size = 1;
+    int m_batch_size{1};
 };
 #endif

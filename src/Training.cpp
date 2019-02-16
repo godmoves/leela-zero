@@ -151,12 +151,12 @@ void Training::clear_training() {
 }
 
 TimeStep::NNPlanes Training::get_planes(const GameState* const state) {
-    const auto input_data = Network::gather_features(state, 0);
+    const auto input_data = TRTNetwork::gather_features(state, 0);
 
     auto planes = TimeStep::NNPlanes{};
-    planes.resize(Network::INPUT_CHANNELS);
+    planes.resize(TRTNetwork::INPUT_CHANNELS);
 
-    for (auto c = size_t{0}; c < Network::INPUT_CHANNELS; c++) {
+    for (auto c = size_t{0}; c < TRTNetwork::INPUT_CHANNELS; c++) {
         for (auto idx = 0; idx < NUM_INTERSECTIONS; idx++) {
             planes[c][idx] = bool(input_data[c * NUM_INTERSECTIONS + idx]);
         }
@@ -164,13 +164,13 @@ TimeStep::NNPlanes Training::get_planes(const GameState* const state) {
     return planes;
 }
 
-void Training::record(Network & network, GameState& state, UCTNode& root) {
+void Training::record(TRTNetwork & network, GameState& state, UCTNode& root) {
     auto step = TimeStep{};
     step.to_move = state.board.get_to_move();
     step.planes = get_planes(&state);
 
     auto result =
-        network.get_output(&state, Network::Ensemble::DIRECT, 0);
+        network.get_output(&state, TRTNetwork::Ensemble::DIRECT, 0);
     step.net_winrate = result.winrate;
 
     const auto& best_node = root.get_best_root_child(step.to_move);

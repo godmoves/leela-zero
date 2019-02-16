@@ -203,7 +203,7 @@ void UCTNode::inflate_all_children() {
     }
 }
 
-void UCTNode::prepare_root_node(Network & network, int color,
+void UCTNode::prepare_root_node(TRTNetwork & network, int color,
                                 std::atomic<int>& nodes,
                                 GameState& root_state) {
     float root_eval;

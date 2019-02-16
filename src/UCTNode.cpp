@@ -47,6 +47,7 @@
 #include "GTP.h"
 #include "GameState.h"
 #include "Network.h"
+#include "TRTNetwork.h"
 #include "Utils.h"
 
 using namespace Utils;
@@ -58,7 +59,7 @@ bool UCTNode::first_visit() const {
     return m_visits == 0;
 }
 
-bool UCTNode::create_children(Network & network,
+bool UCTNode::create_children(TRTNetwork & network,
                               std::atomic<int>& nodecount,
                               GameState& state,
                               float& eval,
@@ -80,7 +81,7 @@ bool UCTNode::create_children(Network & network,
     }
 
     const auto raw_netlist = network.get_output(
-        &state, Network::Ensemble::RANDOM_SYMMETRY);
+        &state, TRTNetwork::Ensemble::RANDOM_SYMMETRY);
 
     // DCNN returns winrate as side to move
     m_net_eval = raw_netlist.winrate;
@@ -91,7 +92,7 @@ bool UCTNode::create_children(Network & network,
     }
     eval = m_net_eval;
 
-    std::vector<Network::PolicyVertexPair> nodelist;
+    std::vector<TRTNetwork::PolicyVertexPair> nodelist;
 
     auto legal_sum = 0.0f;
     for (auto i = 0; i < NUM_INTERSECTIONS; i++) {
@@ -125,7 +126,7 @@ bool UCTNode::create_children(Network & network,
 }
 
 void UCTNode::link_nodelist(std::atomic<int>& nodecount,
-                            std::vector<Network::PolicyVertexPair>& nodelist,
+                            std::vector<TRTNetwork::PolicyVertexPair>& nodelist,
                             float min_psa_ratio) {
     assert(min_psa_ratio < m_min_psa_ratio_children);
 

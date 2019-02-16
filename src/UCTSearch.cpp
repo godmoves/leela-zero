@@ -92,7 +92,7 @@ private:
 };
 
 
-UCTSearch::UCTSearch(GameState& g, Network& network)
+UCTSearch::UCTSearch(GameState& g, TRTNetwork& network)
     : m_rootstate(g), m_network(network) {
     set_playout_limit(cfg_max_playouts);
     set_visit_limit(cfg_max_visits);

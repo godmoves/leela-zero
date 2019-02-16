@@ -39,7 +39,7 @@
 #include "KoState.h"
 #include "TimeControl.h"
 
-class Network;
+class TRTNetwork;
 
 class GameState : public KoState {
 public:
@@ -53,7 +53,7 @@ public:
     void reset_game();
     bool set_fixed_handicap(int stones);
     int set_fixed_handicap_2(int stones);
-    void place_free_handicap(int stones, Network & network);
+    void place_free_handicap(int stones, TRTNetwork & network);
     void anchor_game_history();
 
     void rewind(); /* undo infinite */

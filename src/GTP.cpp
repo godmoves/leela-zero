@@ -48,6 +48,7 @@
 #include "FullBoard.h"
 #include "GameState.h"
 #include "Network.h"
+#include "TRTNetwork.h"
 #include "SGFTree.h"
 #include "SMP.h"
 #include "Training.h"
@@ -292,9 +293,9 @@ bool AnalyzeTags::has_move_restrictions() const {
     return !m_moves_to_avoid.empty() || !m_moves_to_allow.empty();
 }
 
-std::unique_ptr<Network> GTP::s_network;
+std::unique_ptr<TRTNetwork> GTP::s_network;
 
-void GTP::initialize(std::unique_ptr<Network>&& net) {
+void GTP::initialize(std::unique_ptr<TRTNetwork>&& net) {
     s_network = std::move(net);
 
     bool result;
@@ -844,29 +845,29 @@ void GTP::execute(GameState & game, const std::string& xinput) {
         cmdstream >> tmp;   // eat heatmap
         cmdstream >> symmetry;
 
-        Network::Netresult vec;
+        TRTNetwork::Netresult vec;
         if (cmdstream.fail()) {
             // Default = DIRECT with no symmetric change
             vec = s_network->get_output(
-                &game, Network::Ensemble::DIRECT,
-                Network::IDENTITY_SYMMETRY, false);
+                &game, TRTNetwork::Ensemble::DIRECT,
+                TRTNetwork::IDENTITY_SYMMETRY, false);
         } else if (symmetry == "all") {
-            for (auto s = 0; s < Network::NUM_SYMMETRIES; ++s) {
+            for (auto s = 0; s < TRTNetwork::NUM_SYMMETRIES; ++s) {
                 vec = s_network->get_output(
-                    &game, Network::Ensemble::DIRECT, s, false);
-                Network::show_heatmap(&game, vec, false);
+                    &game, TRTNetwork::Ensemble::DIRECT, s, false);
+                TRTNetwork::show_heatmap(&game, vec, false);
             }
         } else if (symmetry == "average" || symmetry == "avg") {
             vec = s_network->get_output(
-                &game, Network::Ensemble::AVERAGE,
-                Network::NUM_SYMMETRIES, false);
+                &game, TRTNetwork::Ensemble::AVERAGE,
+                TRTNetwork::NUM_SYMMETRIES, false);
         } else {
             vec = s_network->get_output(
-                &game, Network::Ensemble::DIRECT, std::stoi(symmetry), false);
+                &game, TRTNetwork::Ensemble::DIRECT, std::stoi(symmetry), false);
         }
 
         if (symmetry != "all") {
-            Network::show_heatmap(&game, vec, false);
+            TRTNetwork::show_heatmap(&game, vec, false);
         }
 
         gtp_printf(id, "");

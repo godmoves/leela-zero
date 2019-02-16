@@ -40,6 +40,7 @@
 
 #include "GameState.h"
 #include "Network.h"
+#include "TRTNetwork.h"
 #include "SMP.h"
 #include "UCTNodePointer.h"
 
@@ -54,7 +55,7 @@ public:
     UCTNode() = delete;
     ~UCTNode() = default;
 
-    bool create_children(Network & network,
+    bool create_children(TRTNetwork & network,
                          std::atomic<int>& nodecount,
                          GameState& state, float& eval,
                          float min_psa_ratio = 0.0f);
@@ -85,7 +86,7 @@ public:
 
     // Defined in UCTNodeRoot.cpp, only to be called on m_root in UCTSearch
     void randomize_first_proportionally();
-    void prepare_root_node(Network & network, int color,
+    void prepare_root_node(TRTNetwork & network, int color,
                            std::atomic<int>& nodecount,
                            GameState& state);
 
@@ -102,7 +103,7 @@ private:
         ACTIVE
     };
     void link_nodelist(std::atomic<int>& nodecount,
-                       std::vector<Network::PolicyVertexPair>& nodelist,
+                       std::vector<TRTNetwork::PolicyVertexPair>& nodelist,
                        float min_psa_ratio);
     double get_blackevals() const;
     void accumulate_eval(float eval);

@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "Network.h"
+#include "TRTNetwork.h"
 #include "GameState.h"
 #include "UCTSearch.h"
 
@@ -132,8 +133,8 @@ static constexpr size_t MiB = 1024LL * 1024LL;
 */
 class GTP {
 public:
-    static std::unique_ptr<Network> s_network;
-    static void initialize(std::unique_ptr<Network>&& network);
+    static std::unique_ptr<TRTNetwork> s_network;
+    static void initialize(std::unique_ptr<TRTNetwork>&& network);
     static void execute(GameState & game, const std::string& xinput);
     static void setup_default_parameters();
 private:

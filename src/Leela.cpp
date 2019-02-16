@@ -44,6 +44,7 @@
 #include "GTP.h"
 #include "GameState.h"
 #include "Network.h"
+#include "TRTNetwork.h"
 #include "NNCache.h"
 #include "Random.h"
 #include "ThreadPool.h"
@@ -473,7 +474,7 @@ static void parse_commandline(int argc, char *argv[]) {
 }
 
 static void initialize_network() {
-    auto network = std::make_unique<Network>();
+    auto network = std::make_unique<TRTNetwork>();
     auto playouts = std::min(cfg_max_playouts, cfg_max_visits);
     network->initialize(playouts, cfg_weightsfile);
 
