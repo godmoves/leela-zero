@@ -50,7 +50,7 @@
 #include "ForwardPipe.h"
 
 
-class Network {
+class TRTNetwork {
 public:
     static constexpr auto NUM_SYMMETRIES = 8;
     static constexpr auto IDENTITY_SYMMETRY = 0;
@@ -102,7 +102,7 @@ private:
                                       std::vector<float>::iterator black,
                                       std::vector<float>::iterator white,
                                       const int symmetry);
-    bool probe_cache(const GameState* const state, Network::Netresult& result);
+    bool probe_cache(const GameState* const state, TRTNetwork::Netresult& result);
 
     NNCache m_nncache;
 

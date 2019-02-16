@@ -52,7 +52,7 @@
 #endif
 #include "zlib.h"
 
-#include "Network.h"
+#include "TRTNetwork.h"
 #include "CPUPipe.h"
 #ifdef USE_OPENCL
 #include "OpenCLScheduler.h"
@@ -76,22 +76,22 @@ using namespace nvuffparser;
 
 // Symmetry helper
 static std::array<std::array<int, NUM_INTERSECTIONS>,
-                  Network::NUM_SYMMETRIES> symmetry_nn_idx_table;
+                  TRTNetwork::NUM_SYMMETRIES> symmetry_nn_idx_table;
 
 // TensorRT logger
 class Logger : public ILogger {
     void log(Severity severity, const char *msg) override {
         switch (severity) {
-            case Severity::kINTERNAL_ERROR: LOG(ERROR) << msg; break;
-            case Severity::kERROR: LOG(ERROR) << msg; break;
-            case Severity::kWARNING: LOG(WARNING) << msg; break;
+            case Severity::kINTERNAL_ERROR: myprintf("kINTERNAL_ERROR: %s", msg); break;
+            case Severity::kERROR: myprintf("kERROR: %s", msg); break;
+            case Severity::kWARNING: myprintf("kWARNING: %s", msg); break;
             // not log info
             // case Severity::kINFO: LOG(INFO) << msg; break;
         }
     }
 } g_logger;
 
-float Network::benchmark_time(int centiseconds) {
+float TRTNetwork::benchmark_time(int centiseconds) {
     const auto cpus = cfg_num_threads;
 
     ThreadGroup tg(thread_pool);
@@ -126,7 +126,7 @@ float Network::benchmark_time(int centiseconds) {
     return 100.0f * runcount.load() / elapsed;
 }
 
-void Network::benchmark(const GameState* const state, const int iterations) {
+void TRTNetwork::benchmark(const GameState* const state, const int iterations) {
     const auto cpus = cfg_num_threads;
     const Time start;
 
@@ -149,10 +149,11 @@ void Network::benchmark(const GameState* const state, const int iterations) {
              runcount.load(), elapsed, int(runcount.load() / elapsed));
 }
 
-void Network::initialize(int playouts, const std::string & weightsfile) {
-    myprintf("Using TensorRT kernel on GPU %d\n.", m_gpu)
-    if (USE_HALF):
-        myprintf("Using half precision.")
+void TRTNetwork::initialize(int playouts, const std::string & weightsfile) {
+    myprintf("Using TensorRT kernel on GPU %d\n.", m_gpu);
+#ifdef USE_HALF
+    myprintf("Using half precision.");
+#endif
 
     // set which GPU to use
     cudaSetDevice(m_gpu);
@@ -188,7 +189,7 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
     m_builder = createInferBuilder(g_logger);
     m_net = m_builder->createNetwork();
     // parse the uff file
-    parser->parse(weightsfile.c_str(), *m_net, DataType::kFLOAT);
+    m_parser->parse(weightsfile.c_str(), *m_net, DataType::kFLOAT);
 
     // build engine
     // set max batch size
@@ -197,7 +198,9 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
     // set work space size (1 << 20 ~ 1 << 30 is known good)
     m_builder->setMaxWorkspaceSize(1 << 30);
     // set half precision
-    m_builder->setHalf2Mode(USE_HALF);
+#ifdef USE_HALF
+    m_builder->setHalf2Mode(true);
+#endif
 
     m_engine = m_builder->buildCudaEngine(*m_net);
     if (m_engine == nullptr) {
@@ -218,10 +221,10 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
             size *= dim.d[i];
         }
         dim_str += ")";
-        myprintf("tensorrt binding: %s %s\n", m_engine->getBindingName(i), dim_str)
+        myprintf("tensorrt binding: %s %s\n", m_engine->getBindingName(i), dim_str);
 
         void *buf;
-        int ret = cudaMalloc(&buf, batch_size * size * sizeof(float));
+        int ret = cudaMalloc(&buf, m_batch_size * size * sizeof(float));
         if (ret != 0) {
             myprintf("cuda malloc err %d\n", ret);
             return;
@@ -230,8 +233,8 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
     }
 }
 
-bool Network::probe_cache(const GameState* const state,
-                          Network::Netresult& result) {
+bool TRTNetwork::probe_cache(const GameState* const state,
+                             TRTNetwork::Netresult& result) {
     if (m_nncache.lookup(state->board.get_hash(), result)) {
         return true;
     }
@@ -240,8 +243,8 @@ bool Network::probe_cache(const GameState* const state,
     if (!cfg_noise && !cfg_random_cnt
         && state->get_movenum()
            < (state->get_timecontrol().opening_moves(BOARD_SIZE) / 2)) {
-        for (auto sym = 0; sym < Network::NUM_SYMMETRIES; ++sym) {
-            if (sym == Network::IDENTITY_SYMMETRY) {
+        for (auto sym = 0; sym < TRTNetwork::NUM_SYMMETRIES; ++sym) {
+            if (sym == TRTNetwork::IDENTITY_SYMMETRY) {
                 continue;
             }
             const auto hash = state->get_symmetry_hash(sym);
@@ -259,7 +262,7 @@ bool Network::probe_cache(const GameState* const state,
     return false;
 }
 
-Network::Netresult Network::get_output(
+TRTNetwork::Netresult TRTNetwork::get_output(
     const GameState* const state, const Ensemble ensemble, const int symmetry,
     const bool read_cache, const bool write_cache, const bool force_selfcheck) {
     Netresult result;
@@ -312,7 +315,7 @@ Network::Netresult Network::get_output(
     return result;
 }
 
-Network::Netresult Network::get_output_internal(
+TRTNetwork::Netresult TRTNetwork::get_output_internal(
     const GameState* const state, const int symmetry, bool selfcheck) {
     assert(symmetry >= 0 && symmetry < NUM_SYMMETRIES);
     constexpr auto width = BOARD_SIZE;
@@ -321,7 +324,7 @@ Network::Netresult Network::get_output_internal(
     Netresult result;
 
     // TODO: we support batch size 1 only
-    const auto input_data = gather_features(state, symmetry);
+    const auto inputs_data = gather_features(state, symmetry);
 
     int ret = cudaMemcpy(m_cuda_buf[0], inputs_data.data(),
                          inputs_data.size() * sizeof(float),
@@ -331,7 +334,7 @@ Network::Netresult Network::get_output_internal(
         return result;
     }
 
-    m_context->execute(batch_size, m_cuda_buf.data());
+    m_context->execute(m_batch_size, m_cuda_buf.data());
 
     std::vector<float> value(1);
     std::vector<float> policy(NUM_INTERSECTIONS + 1);
@@ -346,12 +349,12 @@ Network::Netresult Network::get_output_internal(
     }
 
     // calculate policy
-    ret = cudaMemcpy(policy_flat.data(), m_cuda_buf[2],
-                   policy_flat.size() * sizeof(float),
+    ret = cudaMemcpy(policy.data(), m_cuda_buf[2],
+                   policy.size() * sizeof(float),
                    cudaMemcpyDeviceToHost);
     if (ret != 0) {
         myprintf("policy cuda memcpy err %d", ret);
-        return ERR_CUDA_MEMCPY;
+        return result;
     }
 
     // Map value output range [-1..1] to [0..1] range
@@ -368,7 +371,7 @@ Network::Netresult Network::get_output_internal(
     return result;
 }
 
-void Network::show_heatmap(const FastState* const state,
+void TRTNetwork::show_heatmap(const FastState* const state,
                            const Netresult& result,
                            const bool topmoves) {
     std::vector<std::string> display_map;
@@ -397,7 +400,7 @@ void Network::show_heatmap(const FastState* const state,
     myprintf("winrate: %f\n", result.winrate);
 
     if (topmoves) {
-        std::vector<Network::PolicyVertexPair> moves;
+        std::vector<TRTNetwork::PolicyVertexPair> moves;
         for (auto i=0; i < NUM_INTERSECTIONS; i++) {
             const auto x = i % BOARD_SIZE;
             const auto y = i / BOARD_SIZE;
@@ -421,7 +424,7 @@ void Network::show_heatmap(const FastState* const state,
     }
 }
 
-void Network::fill_input_plane_pair(const FullBoard& board,
+void TRTNetwork::fill_input_plane_pair(const FullBoard& board,
                                     std::vector<float>::iterator black,
                                     std::vector<float>::iterator white,
                                     const int symmetry) {
@@ -438,7 +441,7 @@ void Network::fill_input_plane_pair(const FullBoard& board,
     }
 }
 
-std::vector<float> Network::gather_features(const GameState* const state,
+std::vector<float> TRTNetwork::gather_features(const GameState* const state,
                                             const int symmetry) {
     assert(symmetry >= 0 && symmetry < NUM_SYMMETRIES);
     auto input_data = std::vector<float>(INPUT_CHANNELS * NUM_INTERSECTIONS);
@@ -471,7 +474,7 @@ std::vector<float> Network::gather_features(const GameState* const state,
     return input_data;
 }
 
-std::pair<int, int> Network::get_symmetry(const std::pair<int, int>& vertex,
+std::pair<int, int> TRTNetwork::get_symmetry(const std::pair<int, int>& vertex,
                                           const int symmetry,
                                           const int board_size) {
     auto x = vertex.first;
@@ -499,7 +502,7 @@ std::pair<int, int> Network::get_symmetry(const std::pair<int, int>& vertex,
 }
 
 // TODO: seems we don't need this 
-size_t Network::get_estimated_size() {
+size_t TRTNetwork::get_estimated_size() {
   // get the size of the network
   if (m_estimated_size != 0) {
       return m_estimated_size;
@@ -507,10 +510,10 @@ size_t Network::get_estimated_size() {
   return m_estimated_size;
 }
 
-size_t Network::get_estimated_cache_size() {
+size_t TRTNetwork::get_estimated_cache_size() {
   return m_nncache.get_estimated_size();
 }
 
-void Network::nncache_resize(int max_count) {
+void TRTNetwork::nncache_resize(int max_count) {
   return m_nncache.resize(max_count);
 }

@@ -27,6 +27,7 @@ find_package(Boost 1.58.0 REQUIRED program_options filesystem)
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenCL REQUIRED)
+find_package(CUDA REQUIRED)
 # We need OpenBLAS for now, because we make some specific
 # calls. Ideally we'd use OpenBLAS is possible and fall back to
 # not doing those calls if it's not present.
@@ -93,6 +94,11 @@ include_directories(${IncludePath})
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${OpenCL_INCLUDE_DIRS})
 include_directories(${ZLIB_INCLUDE_DIRS})
+include_directories(${CUDA_INCLUDE_DIRS})
+include_directories(${CMAKE_SOURCE_DIR})
+
+set(CUDA_NVCC_FLAGS --std=c++11)
+#set(CMAKE_CXX_STANDARD 11)
 
 if((UNIX AND NOT APPLE) OR WIN32)
     include_directories(${BLAS_INCLUDE_DIRS})
@@ -115,6 +121,7 @@ target_link_libraries(leelaz ${BLAS_LIBRARIES})
 target_link_libraries(leelaz ${OpenCL_LIBRARIES})
 target_link_libraries(leelaz ${ZLIB_LIBRARIES})
 target_link_libraries(leelaz ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(leelaz nvinfer nvparsers cudart)
 install(TARGETS leelaz DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(Qt5Core_FOUND)
@@ -142,6 +149,8 @@ target_link_libraries(tests ${BLAS_LIBRARIES})
 target_link_libraries(tests ${OpenCL_LIBRARIES})
 target_link_libraries(tests ${ZLIB_LIBRARIES})
 target_link_libraries(tests gtest_main ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(tests nvinfer nvparsers cudart)
+
 
 include(GetGitRevisionDescription)
 git_describe(VERSION --tags)
