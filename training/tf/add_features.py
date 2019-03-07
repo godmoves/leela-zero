@@ -6,7 +6,7 @@ import multiprocessing
 
 leela_cmd = "../../src/leelaz -w ../../src/tests/0k.txt --cpu-only"
 
-out_dir = "../../converted_chunks/"
+out_dir = "/home/kaka/work/ladder_lz_data/"
 
 def process_chunk(chunk):
     print(chunk)

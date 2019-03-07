@@ -137,7 +137,7 @@ class TFProcess:
         # Recalculate SWA weight batchnorm means and variances
         self.swa_recalc_bn = True
 
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
         config = tf.ConfigProto(gpu_options=gpu_options)
         self.session = tf.Session(config=config)
 
@@ -345,14 +345,14 @@ class TFProcess:
         timer = Timer()
         while True:
             s = self.global_step.eval(session=self.session)
-            #if s < 1e3:
-            #    self.lr = 0.01
-            #elif s < 100e3:
-            #    self.lr = 0.05
-            #elif s < 150e3:
-            #    self.lr = 0.005
-            #else:
-            #    self.lr = 0.0005
+            if s < 1200e3:
+                self.lr = 0.01
+            elif s < 1600e3:
+                self.lr = 0.001
+            elif s < 2000e3:
+                self.lr = 0.0001
+            else:
+                self.lr = 0.00001
             batch = next(train_data)
             # Measure losses and compute gradients for this batch.
             losses = self.measure_loss(batch, training=True)
