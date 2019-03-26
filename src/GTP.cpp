@@ -338,11 +338,6 @@ void GTP::setup_default_parameters() {
     cfg_sgemm_exhaustive = false;
     cfg_tune_only = false;
 
-<<<<<<< HEAD
-    // we will re-calculate this on Leela.cpp
-    cfg_batch_size = 0;
-=======
->>>>>>> cfb93e5d1d9d5ba323201f27cb4298a70de967e3
 #ifdef USE_HALF
     cfg_precision = precision_t::AUTO;
 #endif

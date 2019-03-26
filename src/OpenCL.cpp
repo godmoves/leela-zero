@@ -846,11 +846,7 @@ OpenCL<net_t>::OpenCL(int gpu, bool silent) {
 }
 
 template <typename net_t>
-<<<<<<< HEAD
-void OpenCL<net_t>::initialize(const int channels, int batch_size) {
-=======
 void OpenCL<net_t>::initialize(const int channels, size_t batch_size) {
->>>>>>> cfb93e5d1d9d5ba323201f27cb4298a70de967e3
     m_batch_size = batch_size;
     // Make program of the source code in the context
     try {
