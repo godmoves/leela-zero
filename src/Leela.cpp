@@ -83,7 +83,7 @@ static void calculate_thread_count_cpu(boost::program_options::variables_map & v
 
     // usually bogus, but used when using NN client
     if (vm.count("batchsize")) {
-        cfg_batch_size = vm["batchsize"].as<int>();
+        cfg_batch_size = vm["batchsize"].as<unsigned int>();
     } 
 }
 
