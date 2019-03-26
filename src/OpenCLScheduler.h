@@ -1,6 +1,6 @@
 /*
     This file is part of Leela Zero.
-    Copyright (C) 2018 Junhee Yoo and contributors
+    Copyright (C) 2018-2019 Junhee Yoo and contributors
 
     Leela Zero is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,6 +14,17 @@
 
     You should have received a copy of the GNU General Public License
     along with Leela Zero.  If not, see <http://www.gnu.org/licenses/>.
+
+    Additional permission under GNU GPL version 3 section 7
+
+    If you modify this Program, or any covered work, by linking or
+    combining it with NVIDIA Corporation's libraries from the
+    NVIDIA CUDA Toolkit and/or the NVIDIA CUDA Deep Neural
+    Network library and/or the NVIDIA TensorRT inference library
+    (or a modified version of those libraries), containing parts covered
+    by the terms of the respective license agreement, the licensors of
+    this Program grant you additional permission to convey the resulting
+    work.
 */
 
 #ifndef OPENCLSCHEDULER_H_INCLUDED
@@ -29,13 +40,28 @@
 #include "OpenCL.h"
 #include "ThreadPool.h"
 
+#ifndef NDEBUG
+struct batch_stats_t {
+    std::atomic<size_t> single_evals{0};
+    std::atomic<size_t> batch_evals{0};
+};
+extern batch_stats_t batch_stats;
+#endif
+
 template <typename net_t>
 class OpenCLScheduler : public ForwardPipe {
-    class ContextPoolEntry {
+    class ForwardQueueEntry {
     public:
-        size_t net_index;
-        OpenCLContext context;
-        ContextPoolEntry(size_t index) : net_index(index) {}
+        std::mutex mutex;
+        std::condition_variable cv;
+        const std::vector<float>& in;
+        std::vector<float>& out_p;
+        std::vector<float>& out_v;
+        ForwardQueueEntry(const std::vector<float>& input,
+                          std::vector<float>& output_pol,
+                          std::vector<float>& output_val)
+        : in(input), out_p(output_pol), out_v(output_val)
+          {}
     };
     class ForwardQueueEntry {
     public:
@@ -72,7 +98,7 @@ private:
 
     // start with 10 milliseconds : lock protected
     int m_waittime{10};
-    
+
     // set to true when single (non-batch) eval is in progress
     std::atomic<bool> m_single_eval_in_progress{false};
 

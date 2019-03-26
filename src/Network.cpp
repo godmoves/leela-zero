@@ -1,6 +1,6 @@
 /*
     This file is part of Leela Zero.
-    Copyright (C) 2017-2018 Gian-Carlo Pascutto and contributors
+    Copyright (C) 2017-2019 Gian-Carlo Pascutto and contributors
 
     Leela Zero is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,8 +14,18 @@
 
     You should have received a copy of the GNU General Public License
     along with Leela Zero.  If not, see <http://www.gnu.org/licenses/>.
-*/
 
+    Additional permission under GNU GPL version 3 section 7
+
+    If you modify this Program, or any covered work, by linking or
+    combining it with NVIDIA Corporation's libraries from the
+    NVIDIA CUDA Toolkit and/or the NVIDIA CUDA Deep Neural
+    Network library and/or the NVIDIA TensorRT inference library
+    (or a modified version of those libraries), containing parts covered
+    by the terms of the respective license agreement, the licensors of
+    this Program grant you additional permission to convey the resulting
+    work.
+*/
 
 #include "config.h"
 
@@ -84,18 +94,24 @@ static std::array<std::array<int, NUM_INTERSECTIONS>,
 
 float Network::benchmark_time(int centiseconds) {
     const auto cpus = cfg_num_threads;
-    const Time start;
 
     ThreadGroup tg(thread_pool);
     std::atomic<int> runcount{0};
 
     GameState state;
-    state.init_game(BOARD_SIZE, 7.5);
-    for (auto i = 0; i < cpus; i++) {
+    state.init_game(BOARD_SIZE, KOMI);
+
+    // As a sanity run, try one run with self check.
+    // Isn't enough to guarantee correctness but better than nothing,
+    // plus for large nets self-check takes a while (1~3 eval per second)
+    get_output(&state, Ensemble::RANDOM_SYMMETRY, -1, false, true, true);
+
+    const Time start;
+    for (auto i = size_t{0}; i < cpus; i++) {
         tg.add_task([this, &runcount, start, centiseconds, state]() {
             while (true) {
                 runcount++;
-                get_output(&state, Ensemble::RANDOM_SYMMETRY, -1, true);
+                get_output(&state, Ensemble::RANDOM_SYMMETRY, -1, false);
                 const Time end;
                 const auto elapsed = Time::timediff_centis(start, end);
                 if (elapsed >= centiseconds) {
@@ -118,11 +134,11 @@ void Network::benchmark(const GameState* const state, const int iterations) {
     ThreadGroup tg(thread_pool);
     std::atomic<int> runcount{0};
 
-    for (auto i = 0; i < cpus; i++) {
+    for (auto i = size_t{0}; i < cpus; i++) {
         tg.add_task([this, &runcount, iterations, state]() {
             while (runcount < iterations) {
                 runcount++;
-                get_output(state, Ensemble::RANDOM_SYMMETRY, -1, true);
+                get_output(state, Ensemble::RANDOM_SYMMETRY, -1, false);
             }
         });
     }
@@ -262,7 +278,7 @@ std::pair<int, int> Network::load_v1_network(std::istream& wtfile) {
         if (!ok || it_line != line.cend()) {
             myprintf("\nFailed to parse weight file. Error on line %d.\n",
                     linecount + 2); //+1 from version line, +1 from 0-indexing
-            return {0,0};
+            return {0, 0};
         }
         if (linecount < plain_conv_wts) {
             if (linecount % 4 == 0) {
@@ -285,7 +301,14 @@ std::pair<int, int> Network::load_v1_network(std::istream& wtfile) {
                                    begin(m_bn_pol_w1)); break;
                 case  3: std::copy(cbegin(weights), cend(weights),
                                    begin(m_bn_pol_w2)); break;
-                case  4: std::copy(cbegin(weights), cend(weights),
+                case  4: if (weights.size() != OUTPUTS_POLICY
+                                               * NUM_INTERSECTIONS
+                                               * POTENTIAL_MOVES) {
+                             myprintf("The weights file is not for %dx%d boards.\n",
+                                      BOARD_SIZE, BOARD_SIZE);
+                             return {0, 0};
+                         }
+                         std::copy(cbegin(weights), cend(weights),
                                    begin(m_ip_pol_w)); break;
                 case  5: std::copy(cbegin(weights), cend(weights),
                                    begin(m_ip_pol_b)); break;
@@ -418,11 +441,21 @@ void Network::select_precision(int channels) {
 
         myprintf("Initializing OpenCL (autodetecting precision).\n");
 
-        // Setup fp16 here so that we can see if we can skip autodetect
+        // Setup fp16 here so that we can see if we can skip autodetect.
+        // However, if fp16 sanity check fails we will return a fp32 and pray it works.
         auto fp16_net = std::make_unique<OpenCLScheduler<half_float::half>>();
         if (!fp16_net->needs_autodetect()) {
-            myprintf("OpenCL: using fp16/half compute support.\n");
-            m_forward = init_net(channels, std::move(fp16_net));
+            try {
+                myprintf("OpenCL: using fp16/half compute support.\n");
+                m_forward = init_net(channels, std::move(fp16_net));
+                benchmark_time(1); // a sanity check run
+            } catch (...) {
+                myprintf("OpenCL: fp16/half failed despite driver claiming support.\n");
+                myprintf("Falling back to single precision\n");
+                m_forward.reset();
+                m_forward = init_net(channels,
+                    std::make_unique<OpenCLScheduler<float>>());
+            }
             return;
         }
 
@@ -500,7 +533,10 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
 
     m_fwd_weights = std::make_shared<ForwardPipeWeights>();
 
+    // Make a guess at a good size as long as the user doesn't
+    // explicitly set a maximum memory usage.
     m_nncache.set_size_from_playouts(playouts);
+
     // Prepare symmetry table
     for (auto s = 0; s < NUM_SYMMETRIES; ++s) {
         for (auto v = 0; v < NUM_INTERSECTIONS; ++v) {
@@ -565,14 +601,16 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
         m_fwd_weights->m_conv_pol_b[i] = 0.0f;
     }
 
-    bool use_selfcheck = true;
 #ifdef USE_OPENCL
     if (cfg_cpu_only) {
         myprintf("Initializing CPU-only evaluation.\n");
         m_forward = init_net(channels, std::make_unique<CPUPipe>());
-
-        use_selfcheck = false;
     } else {
+#ifdef USE_OPENCL_SELFCHECK
+        // initialize CPU reference first, so that we can self-check
+        // when doing fp16 vs. fp32 detections
+        m_forward_cpu = init_net(channels, std::make_unique<CPUPipe>());
+#endif
 #ifdef USE_HALF
         // HALF support is enabled, and we are using the GPU.
         // Select the precision to use at runtime.
@@ -587,16 +625,8 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
 #else //!USE_OPENCL
     myprintf("Initializing CPU-only evaluation.\n");
     m_forward = init_net(channels, std::make_unique<CPUPipe>());
-    use_selfcheck = false;
 #endif
 
-#ifdef USE_OPENCL_SELFCHECK
-    if (use_selfcheck) {
-        m_forward_cpu = init_net(channels, std::make_unique<CPUPipe>());
-    }
-#else
-    (void)use_selfcheck;
-#endif
     // Need to estimate size before clearing up the pipe.
     get_estimated_size();
     m_fwd_weights.reset();
@@ -687,7 +717,7 @@ void Network::compare_net_outputs(const Netresult& data,
     error = std::sqrt(error);
 
     if (error > max_error || std::isnan(error)) {
-        printf("Error in OpenCL calculation: Update your GPU drivers "
+        printf("Error in OpenCL calculation: Update your device's OpenCL drivers "
                "or reduce the amount of games played simultaneously.\n");
         throw std::runtime_error("OpenCL self-check mismatch.");
     }
@@ -746,14 +776,14 @@ bool Network::probe_cache(const GameState* const state,
 }
 
 Network::Netresult Network::get_output(
-    const GameState* const state, const Ensemble ensemble,
-    const int symmetry, const bool skip_cache) {
+    const GameState* const state, const Ensemble ensemble, const int symmetry,
+    const bool read_cache, const bool write_cache, const bool force_selfcheck) {
     Netresult result;
     if (state->board.get_boardsize() != BOARD_SIZE) {
         return result;
     }
 
-    if (!skip_cache) {
+    if (read_cache) {
         // See if we already have this in the cache.
         if (probe_cache(state, result)) {
             return result;
@@ -764,6 +794,7 @@ Network::Netresult Network::get_output(
         assert(symmetry >= 0 && symmetry < NUM_SYMMETRIES);
         result = get_output_internal(state, symmetry);
     } else if (ensemble == AVERAGE) {
+        assert(symmetry == -1);
         for (auto sym = 0; sym < NUM_SYMMETRIES; ++sym) {
             auto tmpresult = get_output_internal(state, sym);
             result.winrate +=
@@ -787,10 +818,13 @@ Network::Netresult Network::get_output(
         // selfcheck is done here because this is the only place NN
         // evaluation is done on actual gameplay.
         if (m_forward_cpu != nullptr
-            && Random::get_Rng().randfix<SELFCHECK_PROBABILITY>() == 0) {
+            && (force_selfcheck || Random::get_Rng().randfix<SELFCHECK_PROBABILITY>() == 0)
+        ) {
             auto result_ref = get_output_internal(state, rand_sym, true);
             compare_net_outputs(result, result_ref);
         }
+#else
+        (void)force_selfcheck;
 #endif
     }
 
@@ -801,8 +835,10 @@ Network::Netresult Network::get_output(
         }
     }
 
-    // Insert result into cache.
-    m_nncache.insert(state->board.get_hash(), result);
+    if (write_cache) {
+        // Insert result into cache.
+        m_nncache.insert(state->board.get_hash(), result);
+    }
 
     return result;
 }
@@ -912,14 +948,12 @@ void Network::show_heatmap(const FastState* const state,
         std::stable_sort(rbegin(moves), rend(moves));
 
         auto cum = 0.0f;
-        size_t tried = 0;
-        while (cum < 0.85f && tried < moves.size()) {
-            if (moves[tried].first < 0.01f) break;
+        for (const auto& move : moves) {
+            if (cum > 0.85f || move.first < 0.01f) break;
             myprintf("%1.3f (%s)\n",
-                    moves[tried].first,
-                    state->board.move_to_text(moves[tried].second).c_str());
-            cum += moves[tried].first;
-            tried++;
+                    move.first,
+                    state->board.move_to_text(move.second).c_str());
+            cum += move.first;
         }
     }
 }

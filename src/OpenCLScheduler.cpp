@@ -1,6 +1,6 @@
 /*
     This file is part of Leela Zero.
-    Copyright (C) 2018 Junhee Yoo and contributors
+    Copyright (C) 2018-2019 Junhee Yoo and contributors
 
     Leela Zero is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,6 +14,17 @@
 
     You should have received a copy of the GNU General Public License
     along with Leela Zero.  If not, see <http://www.gnu.org/licenses/>.
+
+    Additional permission under GNU GPL version 3 section 7
+
+    If you modify this Program, or any covered work, by linking or
+    combining it with NVIDIA Corporation's libraries from the
+    NVIDIA CUDA Toolkit and/or the NVIDIA CUDA Deep Neural
+    Network library and/or the NVIDIA TensorRT inference library
+    (or a modified version of those libraries), containing parts covered
+    by the terms of the respective license agreement, the licensors of
+    this Program grant you additional permission to convey the resulting
+    work.
 */
 #include "config.h"
 
@@ -112,6 +123,24 @@ void OpenCLScheduler<net_t>::initialize(const int channels) {
             m_worker_threads.push_back(std::move(t));
         }
         gnum++;
+    }
+
+    // Exit immediately after tuning.  We should exit here because we skipped
+    // initializing rest of the kernels due to some NVIDIA drivers crashing.
+    if (cfg_tune_only) {
+        exit(EXIT_SUCCESS);
+    }
+}
+
+template <typename net_t>
+OpenCLScheduler<net_t>::~OpenCLScheduler() {
+    {
+        std::unique_lock<std::mutex> lk(m_mutex);
+        m_running = false;
+    }
+    m_cv.notify_all();
+    for (auto & x : m_worker_threads) {
+        x.join();
     }
 }
 
@@ -264,7 +293,7 @@ void OpenCLScheduler<net_t>::forward(const std::vector<float>& input,
 }
 
 #ifndef NDEBUG
-std::atomic<size_t> batch_stats[2];
+struct batch_stats_t batch_stats;
 #endif
 
 template <typename net_t>
@@ -285,22 +314,23 @@ void OpenCLScheduler<net_t>::batch_worker(const size_t gnum) {
     // going to come due to a control dependency (e.g., evals stuck on a
     // critical path).  To do so:
     //
-    // 1) if we picked up a single eval, and ended up that there were no
-    // new incoming requests while handling the single eval, it means that
-    // we hit the critical path.  Wait 1ms shorter next time
+    // 1) if we couldn't form a batch after waiting m_waittime ms, it means
+    // that we hit the critical path and should do scalar evals.
+    // Wait 1ms shorter next time.
+    //
     // 2) if we picked up a single eval, but were getting additional evals
     // while that single eval was being processed, it means that we made
-    // the wrong decision.  Wait 2ms longer next time
+    // the wrong decision.  Wait 2ms longer next time.
 
-    auto pickup_task = [this, gnum] () {
+    auto pickup_task = [this] () {
         std::list<std::shared_ptr<ForwardQueueEntry>> inputs;
-        int count = 0;
+        size_t count = 0;
 
         std::unique_lock<std::mutex> lk(m_mutex);
         while (true) {
             if (!m_running) return inputs;
 
-            count = static_cast<int>(m_forward_queue.size());
+            count = m_forward_queue.size();
             if (count >= cfg_batch_size) {
                 count = cfg_batch_size;
                 break;
@@ -308,15 +338,17 @@ void OpenCLScheduler<net_t>::batch_worker(const size_t gnum) {
 
             bool timeout = !m_cv.wait_for(
                 lk,
-//                std::chrono::milliseconds(m_waittime),
-                std::chrono::milliseconds(50),
+                std::chrono::milliseconds(m_waittime),
                 [this] () {
-                    return !m_running || static_cast<int>(m_forward_queue.size()) >= cfg_batch_size;
+                    return !m_running || m_forward_queue.size() >= cfg_batch_size;
                 }
             );
 
             if (!m_forward_queue.empty()) {
                 if (timeout && m_single_eval_in_progress.exchange(true) == false) {
+                    // Waited long enough but couldn't form a batch.
+                    // Check if there is any other single eval in progress, and if not,
+                    // do one from this thread.
                     if (m_waittime > 1) {
                         m_waittime--;
                     }
@@ -325,6 +357,7 @@ void OpenCLScheduler<net_t>::batch_worker(const size_t gnum) {
                 }
             }
         }
+        // Move 'count' evals from shared queue to local list.
         auto end = begin(m_forward_queue);
         std::advance(end, count);
         std::move(begin(m_forward_queue), end, std::back_inserter(inputs));
@@ -346,38 +379,40 @@ void OpenCLScheduler<net_t>::batch_worker(const size_t gnum) {
         }
 
 #ifndef NDEBUG
-        batch_stats[static_cast<int>(count) == cfg_batch_size ? 1 : 0]++;
+        if (count == 1) {
+            batch_stats.single_evals++;
+        } else {
+            batch_stats.batch_evals++;
+        }
 #endif
 
+        // prepare input for forward() call
         batch_input.resize(in_size * count);
         batch_output_pol.resize(out_pol_size * count);
         batch_output_val.resize(out_val_size * count);
-        {
-            size_t index = 0;
-            for (auto it = begin(inputs); it != end(inputs); ++it) {
-                std::unique_lock<std::mutex> lk((*it)->mutex);
-                std::copy(begin((*it)->in), end((*it)->in), begin(batch_input) + in_size * index);
-                index++;
-            }
+
+        auto index = size_t{0};
+        for (auto & x : inputs) {
+            std::unique_lock<std::mutex> lk(x->mutex);
+            std::copy(begin(x->in), end(x->in), begin(batch_input) + in_size * index);
+            index++;
         }
 
-        {
-            m_networks[gnum]->forward(
-                batch_input, batch_output_pol, batch_output_val, context, count);
-        }
+        // run the NN evaluation
+        m_networks[gnum]->forward(
+            batch_input, batch_output_pol, batch_output_val, context, count);
 
-        {
-            size_t index = 0;
-            for (auto it = begin(inputs); it != end(inputs); ++it) {
-                std::copy(begin(batch_output_pol) + out_pol_size * index,
-                          begin(batch_output_pol) + out_pol_size * (index + 1),
-                          begin((*it)->out_p));
-                std::copy(begin(batch_output_val) + out_val_size * index,
-                          begin(batch_output_val) + out_val_size * (index + 1),
-                          begin((*it)->out_v));
-                (*it)->cv.notify_all();
-                index++;
-            }
+        // Get output and copy back
+        index = 0;
+        for (auto & x : inputs) {
+            std::copy(begin(batch_output_pol) + out_pol_size * index,
+                      begin(batch_output_pol) + out_pol_size * (index + 1),
+                      begin(x->out_p));
+            std::copy(begin(batch_output_val) + out_val_size * index,
+                      begin(batch_output_val) + out_val_size * (index + 1),
+                      begin(x->out_v));
+            x->cv.notify_all();
+            index++;
         }
 
         if (count == 1) {

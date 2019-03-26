@@ -1,6 +1,6 @@
 # This file is part of Leela Zero.
 # Copyright (C) 2017 Marco Calignano
-# Copyright (C) 2017-2018 Gian-Carlo Pascutto and contributors
+# Copyright (C) 2017-2019 Gian-Carlo Pascutto and contributors
 # Leela Zero is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -15,6 +15,7 @@
 cmake_minimum_required(VERSION 3.1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
+include(GNUInstallDirs)
 
 project(leelaz)
 add_subdirectory(gtest EXCLUDE_FROM_ALL) # We don't want to install gtest, exclude it from `all`
