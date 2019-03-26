@@ -63,18 +63,6 @@ class OpenCLScheduler : public ForwardPipe {
         : in(input), out_p(output_pol), out_v(output_val)
           {}
     };
-    class ForwardQueueEntry {
-    public:
-      std::mutex mutex;
-      std::condition_variable cv;
-      const std::vector<float>& in;
-      std::vector<float>& out_p;
-      std::vector<float>& out_v;
-      ForwardQueueEntry(const std::vector<float>& input,
-                        std::vector<float>& output_pol,
-                        std::vector<float>& output_val) : in(input), out_p(output_pol), out_v(output_val)
-        {}
-    };
 public:
     virtual ~OpenCLScheduler();
     OpenCLScheduler();

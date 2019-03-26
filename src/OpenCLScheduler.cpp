@@ -144,18 +144,6 @@ OpenCLScheduler<net_t>::~OpenCLScheduler() {
     }
 }
 
-template <typename net_t>
-OpenCLScheduler<net_t>::~OpenCLScheduler() {
-    {
-        std::unique_lock<std::mutex> lk(m_mutex);
-        m_running = false;
-    }
-    m_cv.notify_all();
-    for (auto & x : m_worker_threads) {
-        x.join();
-    }
-}
-
 template<typename net_t>
 bool OpenCLScheduler<net_t>::needs_autodetect() {
     for (auto& opencl : m_opencl) {
