@@ -209,6 +209,7 @@ void UCTNode::update(float eval, uint16_t vl, float factor, float sel_factor) {
     atomic_add(m_blackevals, double(eval*factor));
     //atomic_add(m_sel_visits, double(sel_factor));
     virtual_loss_undo(vl);
+  
     auto new_delta = eval - (old_eval + eval) / (old_visits + 1);
     // Welford's online algorithm for calculating variance.
     auto delta = old_delta * new_delta;
@@ -355,6 +356,7 @@ std::pair<UCTNode*, float> UCTNode::uct_select_child(int color, bool is_root) {
     }
     if (!cfg_vl_in_parentvisits) { parentvisits = actual_parentvisits; }
     */
+
     auto actual_parentvisits = get_visits(); 
     // will be somewhat smaller than sum of children visits due to fractional backup
     auto parentvisits = actual_parentvisits;

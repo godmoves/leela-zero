@@ -49,6 +49,7 @@
 #include "ThreadPool.h"
 #include "Utils.h"
 #include "Zobrist.h"
+#include "DistributedNetwork.h"
 
 using namespace Utils;
 
@@ -60,6 +61,10 @@ static void license_blurb() {
         "under certain conditions; see the COPYING file for details.\n\n",
         PROGRAM_VERSION);
 }
+
+static std::vector<std::string> cfg_serverlist;
+static int cfg_serverport = 0;
+static bool cfg_nn_no_local = false;
 
 static void calculate_thread_count_cpu(boost::program_options::variables_map & vm) {
     // If we are CPU-based, there is no point using more than the number of CPUs/
@@ -75,6 +80,11 @@ static void calculate_thread_count_cpu(boost::program_options::variables_map & v
     } else {
         cfg_num_threads = cfg_max_threads;
     }
+
+    // usually bogus, but used when using NN client
+    if (vm.count("batchsize")) {
+        cfg_batch_size = vm["batchsize"].as<std::vector<int>>();
+    } 
 }
 
 #ifdef USE_OPENCL
@@ -90,6 +100,7 @@ static void calculate_thread_count_gpu(boost::program_options::variables_map & v
         // size of zero if autodetect GPU : default to 1
         gpu_count = 1;
     }
+
     if (vm["threads"].as<unsigned int>() > 0) {
         auto num_threads = vm["threads"].as<unsigned int>();
         if (num_threads > cfg_max_threads) {
@@ -97,6 +108,7 @@ static void calculate_thread_count_gpu(boost::program_options::variables_map & v
             num_threads = cfg_max_threads;
         }
         cfg_num_threads = num_threads;
+        
         if (vm["batchsize"].as<unsigned int>() > 0) {
             cfg_batch_size = vm["batchsize"].as<unsigned int>();
         } else {
@@ -130,6 +142,11 @@ static void parse_commandline(int argc, char *argv[]) {
     // Declare the supported options.
     po::options_description gen_desc("Generic options");
     gen_desc.add_options()
+        ("nn-server", po::value<int>(), "NN Network server mode")
+        ("nn-client", po::value<std::vector<std::string>>(), "NN Network client mode")
+        ("nn-client-verbose", "NN Network client mode : verbose message")
+        ("nn-client-nolocal", "NN Network client mode : No fallback.  Program will wait until it connects "
+                              "to a net evaluation server.  Default is to keep a fallback weight compute")
         ("help,h", "Show commandline options.")
         ("gtp,g", "Enable GTP mode.")
         ("threads,t", po::value<unsigned int>()->default_value(0),
@@ -262,6 +279,27 @@ static void parse_commandline(int argc, char *argv[]) {
 
     if (vm.count("quiet")) {
         cfg_quiet = true;
+    }
+
+
+    if (vm.count("nn-server")) {
+
+        if (vm.count("nn-client")) {
+            std::cout << "Cannot be a client and a server at the same time" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        cfg_serverport = vm["nn-server"].as<int>();
+    }
+
+    if (vm.count("nn-client")) {
+        cfg_serverlist = vm["nn-client"].as<std::vector<std::string>>();
+
+        if (vm.count("nn-client-verbose")) {
+            cfg_nn_client_verbose = true;
+        }
+        if (vm.count("nn-client-nolocal")) {
+            cfg_nn_no_local = true;
+        }
     }
 
     if (vm.count("benchmark")) {
@@ -515,9 +553,30 @@ static void parse_commandline(int argc, char *argv[]) {
 }
 
 static void initialize_network() {
-    auto network = std::make_unique<Network>();
     auto playouts = std::min(cfg_max_playouts, cfg_max_visits);
-    network->initialize(playouts, cfg_weightsfile);
+    auto network = std::unique_ptr<Network>();
+
+    if (cfg_serverlist.empty()) {
+        // local net mode
+        network.reset(new Network());
+        network->initialize(playouts, cfg_weightsfile);
+    } else {
+        // distributed remote net mode
+        auto n = new DistributedClientNetwork();
+        network.reset(n);
+
+        if (!cfg_nn_no_local) {
+            n->initialize(playouts, cfg_weightsfile);
+        }
+        n->initialize(playouts, cfg_serverlist, Network::compute_hash(cfg_weightsfile));
+    }
+
+    // server mode?
+    if (cfg_serverport != 0) {
+        NetServer server(*network);
+        server.listen(cfg_serverport, Network::compute_hash(cfg_weightsfile));
+        exit(0);
+    }
 
     GTP::initialize(std::move(network));
 }
@@ -572,6 +631,7 @@ int main(int argc, char *argv[]) {
     }
 
     init_global_objects();
+
 
     auto maingame = std::make_unique<GameState>();
 

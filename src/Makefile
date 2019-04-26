@@ -3,7 +3,7 @@ THE_OS := $(shell uname -s)
 default:
 	@echo "Detected OS: ${THE_OS}"
 	$(MAKE) CC=gcc CXX=g++ \
-		CXXFLAGS='$(CXXFLAGS) -Wall -Wextra -Wno-ignored-attributes -pipe -O3 -g -ffast-math -flto -march=native -std=c++14 -DNDEBUG'  \
+		CXXFLAGS='$(CXXFLAGS) -Wall -Wextra -Wno-ignored-attributes -pipe -O3 -g -ffast-math -flto -march=native -std=c++14 '  \
 		LDFLAGS='$(LDFLAGS) -flto -g' \
 		leelaz
 
@@ -51,7 +51,8 @@ sources = Network.cpp FullBoard.cpp KoState.cpp Training.cpp \
 	  SGFParser.cpp Timing.cpp Utils.cpp FastBoard.cpp \
 	  SGFTree.cpp Zobrist.cpp FastState.cpp GTP.cpp Random.cpp \
 	  SMP.cpp UCTNode.cpp UCTNodePointer.cpp UCTNodeRoot.cpp \
-	  OpenCL.cpp OpenCLScheduler.cpp NNCache.cpp Tuner.cpp CPUPipe.cpp
+	  OpenCL.cpp OpenCLScheduler.cpp NNCache.cpp Tuner.cpp CPUPipe.cpp \
+	  DistributedNetwork.cpp
 
 objects = $(sources:.cpp=.o)
 deps = $(sources:%.cpp=%.d)

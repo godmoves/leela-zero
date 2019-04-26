@@ -102,6 +102,8 @@ bool cfg_quiet;
 std::string cfg_options_str;
 bool cfg_benchmark;
 bool cfg_cpu_only;
+bool cfg_nn_client_verbose;
+int cfg_analyze_interval_centis;
 AnalyzeTags cfg_analyze_tags;
 
 /* Parses tags for the lz-analyze GTP command and friends */
@@ -370,6 +372,7 @@ void GTP::setup_default_parameters() {
 #else
     cfg_cpu_only = false;
 #endif
+    cfg_nn_client_verbose = false;
 
     cfg_analyze_tags = AnalyzeTags{};
 

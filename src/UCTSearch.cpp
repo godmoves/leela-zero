@@ -572,6 +572,7 @@ void UCTSearch::tree_stats(UCTNode& node) {
         if (depth > max_depth) max_depth = depth;
 
         node.acquire_reader();
+
         for (const auto& child : node.get_children()) {
             if (child.get_visits() > 0) {
                 children_count += 1;
@@ -949,6 +950,12 @@ void UCTSearch::increment_playouts() {
     m_playouts++;
 }
 
+#ifdef USE_OPENCL
+#ifndef NDEBUG
+extern std::atomic<size_t> batch_stats[];
+#endif
+#endif
+
 int UCTSearch::think(int color, passflag_t passflag) {
     // Start counting time for us
     m_gtpstate.start_clock(color);
@@ -972,6 +979,7 @@ int UCTSearch::think(int color, passflag_t passflag) {
     do {
         Time elapsed;
         int elapsed_centis = Time::timediff_centis(start, elapsed);
+
         std::this_thread::sleep_for(std::chrono::milliseconds(
             std::min(std::min(cfg_analyze_tags.interval_centis() - (elapsed_centis - last_output),
                 250 - (elapsed_centis - last_update)), time_for_move - elapsed_centis) * 10));
@@ -1047,6 +1055,7 @@ int UCTSearch::think(int color, passflag_t passflag) {
         //myprintf("%s", m_debug_string.c_str());
 #endif
     }
+
     int bestmove = get_best_move(passflag);
 
     // Save the explanation.
@@ -1072,6 +1081,8 @@ void UCTSearch::ponder() {
     if (disable_reuse) {
         m_last_rootstate.reset(nullptr);
     }
+
+    update_root();
 
     update_root();
 

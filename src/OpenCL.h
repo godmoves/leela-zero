@@ -220,7 +220,6 @@ private:
     int m_batch_size = 1;
     int m_num_workers;
 
-    
     struct BackupEntry {
         int tomove;
         int symmetry;

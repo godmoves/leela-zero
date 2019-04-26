@@ -332,6 +332,43 @@ std::pair<int, int> Network::load_v1_network(std::istream& wtfile) {
     return {channels, static_cast<int>(residual_blocks)};
 }
 
+std::uint64_t Network::compute_hash(const std::string& filename) {
+    auto __compute_hash = [](std::uint64_t hash, const char * buf, std::size_t sz) {
+        for(auto i = std::size_t{0}; i < sz; i++) {
+            hash = (hash >> 1) | (hash << 63);
+            hash = hash ^ buf[i];
+        }
+        return hash;
+    };
+
+
+    // gzopen supports both gz and non-gz files, will decompress
+    // or just read directly as needed.
+    auto gzhandle = gzopen(filename.c_str(), "rb");
+    if (gzhandle == nullptr) {
+        throw std::runtime_error("Cannot find file");
+    }
+    // Stream the gz file in to a memory buffer stream.
+    auto buffer = std::stringstream{};
+    constexpr auto chunkBufferSize = 64 * 1024;
+    std::vector<char> chunkBuffer(chunkBufferSize);
+
+    auto hash = std::uint64_t{0};
+    while (true) {
+        auto bytesRead = gzread(gzhandle, chunkBuffer.data(), chunkBufferSize);
+        if (bytesRead == 0) break;
+        if (bytesRead < 0) {
+            gzclose(gzhandle);
+            throw std::runtime_error("Cannot decompress file file");
+        }
+        assert(bytesRead <= chunkBufferSize);
+        buffer.write(chunkBuffer.data(), bytesRead);
+        hash = __compute_hash(hash, chunkBuffer.data(), bytesRead);
+    }
+    gzclose(gzhandle);
+    return hash;
+}
+
 std::pair<int, int> Network::load_network_file(const std::string& filename) {
     // gzopen supports both gz and non-gz files, will decompress
     // or just read directly as needed.
@@ -344,6 +381,7 @@ std::pair<int, int> Network::load_network_file(const std::string& filename) {
     auto buffer = std::stringstream{};
     constexpr auto chunkBufferSize = 64 * 1024;
     std::vector<char> chunkBuffer(chunkBufferSize);
+
     while (true) {
         auto bytesRead = gzread(gzhandle, chunkBuffer.data(), chunkBufferSize);
         if (bytesRead == 0) break;
@@ -505,6 +543,12 @@ void Network::initialize(int playouts, const std::string & weightsfile) {
             assert(symmetry_nn_idx_table[s][v] >= 0
                    && symmetry_nn_idx_table[s][v] < NUM_INTERSECTIONS);
         }
+    }
+
+    if (weightsfile == "") {
+        // no weightsfile - this is typically nonsense but some child implementations
+        // may just want to skip having weights at all.
+        return;
     }
 
     // Load network from file
@@ -846,7 +890,6 @@ Network::Netresult Network::get_output(
         return result;
     }
 
-
     /*if (read_cache) {
         // See if we already have this in the cache.
         if (probe_cache(state, result)) {
@@ -962,10 +1005,28 @@ void Network::process_output(
 Network::Netresult Network::get_output_internal(
     const GameState* const state, const int symmetry, bool selfcheck) {
     assert(symmetry >= 0 && symmetry < NUM_SYMMETRIES);
+    const auto input_data = gather_features(state, symmetry);
+
+    auto ret = get_output_internal(input_data, selfcheck);
+
+    Netresult result;
+
+    for (auto idx = size_t{0}; idx < NUM_INTERSECTIONS; idx++) {
+        const auto sym_idx = symmetry_nn_idx_table[symmetry][idx];
+        result.policy[sym_idx] = ret.first[idx];
+    }
+
+    result.policy_pass = ret.first[NUM_INTERSECTIONS];
+    result.winrate = ret.second;
+
+    return result;
+}
+
+std::pair<std::vector<float>,float> Network::get_output_internal(const std::vector<float> & input_data, bool selfcheck)
+{
     constexpr auto width = BOARD_SIZE;
     constexpr auto height = BOARD_SIZE;
 
-    const auto input_data = gather_features(state, symmetry);
     std::vector<float> policy_data(OUTPUTS_POLICY * width * height);
     std::vector<float> value_data(OUTPUTS_VALUE * width * height);
 #ifdef USE_OPENCL_SELFCHECK
@@ -999,17 +1060,8 @@ Network::Netresult Network::get_output_internal(
     // Map TanH output range [-1..1] to [0..1] range
     const auto winrate = (1.0f + std::tanh(winrate_out[0])) / 2.0f;
 
-    Netresult result;
+    return {outputs, winrate};
 
-    for (auto idx = size_t{0}; idx < NUM_INTERSECTIONS; idx++) {
-        const auto sym_idx = symmetry_nn_idx_table[symmetry][idx];
-        result.policy[sym_idx] = outputs[idx];
-    }
-
-    result.policy_pass = outputs[NUM_INTERSECTIONS];
-    result.winrate = winrate;
-
-    return result;
 }
 
 void Network::show_heatmap(const FastState* const state,

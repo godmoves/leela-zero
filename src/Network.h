@@ -76,17 +76,16 @@ public:
     using Netresult = NNCache::Netresult;
 
     Netresult get_output(const GameState* const state,
-        const Ensemble ensemble,
-        const int symmetry = -1,
-        const bool read_cache = true,
-        const bool write_cache = true,
-        const bool force_selfcheck = false);
-    void get_output0(
-        int gnum, int i,
-        BackupData& bd,
-        const Ensemble ensemble,
-        int symmetry = -1,
-        const bool skip_cache = false);
+                         const Ensemble ensemble,
+                         const int symmetry = -1,
+                         const bool read_cache = true,
+                         const bool write_cache = true,
+                         const bool force_selfcheck = false);
+    void get_output0(int gnum, int i,
+                     BackupData& bd,
+                     const Ensemble ensemble,
+                     int symmetry = -1,
+                     const bool skip_cache = false);
 
     static constexpr auto INPUT_MOVES = 8;
     static constexpr auto INPUT_CHANNELS = 2 * INPUT_MOVES + 2;
@@ -95,6 +94,7 @@ public:
     static constexpr auto VALUE_LAYER = 256;
 
     void initialize(int playouts, const std::string & weightsfile);
+
 
     float benchmark_time(int centiseconds);
     void benchmark(const GameState * const state,
@@ -107,6 +107,11 @@ public:
     static std::pair<int, int> get_symmetry(const std::pair<int, int>& vertex,
                                             const int symmetry,
                                             const int board_size = BOARD_SIZE);
+
+    virtual std::pair<std::vector<float>,float>
+                get_output_internal(const std::vector<float> & input_data, bool selfcheck);
+
+    static std::uint64_t compute_hash(const std::string & filename);
 
     size_t get_estimated_size();
     size_t get_estimated_cache_size();

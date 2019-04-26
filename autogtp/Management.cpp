@@ -45,6 +45,7 @@ Management::Management(const int gpus,
                        const QStringList& gpuslist,
                        const int ver,
                        const int maxGames,
+                       const QString& servername,
                        const bool delNetworks,
                        const QString& keep,
                        const QString& debug)
@@ -63,6 +64,7 @@ Management::Management(const int gpus,
     m_fallBack(Order::Error),
     m_lastMatch(Order::Error),
     m_gamesLeft(maxGames),
+    m_servername(servername),
     m_threadsLeft(gpus * games),
     m_delNetworks(delNetworks),
     m_lockFile(nullptr) {
@@ -273,6 +275,9 @@ QString Management::getOptionsString(const QJsonObject &opt, const QString &rnd)
     options.append(" --noponder ");
     if (rnd != "") {
         options.append(" -s " + rnd + " ");
+    }
+    if(m_servername != "") {
+        options.append(" --nn-client " + m_servername + " --nn-client-nolocal ");
     }
     return options;
 }

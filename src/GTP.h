@@ -127,6 +127,8 @@ extern bool cfg_quiet;
 extern std::string cfg_options_str;
 extern bool cfg_benchmark;
 extern bool cfg_cpu_only;
+extern bool cfg_nn_client_verbose;
+extern int cfg_analyze_interval_centis;
 extern AnalyzeTags cfg_analyze_tags;
 
 static constexpr size_t MiB = 1024LL * 1024LL;

@@ -40,6 +40,7 @@ public:
                const QStringList& gpuslist,
                const int ver,
                const int maxGame,
+               const QString& servername,
                const bool delNetworks,
                const QString& keep,
                const QString& debug);
@@ -79,6 +80,7 @@ private:
     Order m_fallBack;
     Order m_lastMatch;
     int m_gamesLeft;
+    QString m_servername;
     int m_threadsLeft;
     bool m_delNetworks;
     QLockFile *m_lockFile;

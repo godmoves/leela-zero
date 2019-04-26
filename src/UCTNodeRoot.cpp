@@ -81,6 +81,16 @@ void UCTNode::kill_superkos(const GameState& state) {
         if (child->valid()) {
             valid_count++;
         }
+        if (child->valid()) {
+            valid_count++;
+        }
+    }
+
+    if (valid_count > 1 && pass_child &&
+            !state.is_move_legal(state.get_to_move(), FastBoard::PASS)) {
+        // Remove the PASS node according to "avoid" -- but only if there are
+        // other valid nodes left.
+        (*pass_child)->invalidate();
     }
 
     if (valid_count > 1 && pass_child &&

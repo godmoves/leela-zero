@@ -1,5 +1,27 @@
-[![Linux Build Status](https://travis-ci.org/leela-zero/leela-zero.svg?branch=next)](https://travis-ci.org/leela-zero/leela-zero)
-[![Windows Build Status](https://ci.appveyor.com/api/projects/status/dcvp31x1e0yavrtf/branch/next?svg=true)](https://ci.appveyor.com/project/gcp/leela-zero-8arv1/branch/next)
+# Addendum for clustered operation
+
+This branch is a modification that allows running leela-zero across a cluster.  You can do this by having a single client (which does the usual game logic) and multiple GPU servers (which does the NN evaluation)
+
+Example:
+
+(on machine gpu-p0 with 4 GPUs)
+./leelaz --gpu 0 --gpu 1 --gpu 2 --gpu 3 -t 40 --batchsize 5 -w ./net.gz  --nn-server 13333
+(on machine gpu-p1 with 2 GPUs)
+./leelaz --gpu 0 --gpu 1 --gpu 2 --gpu 3 -t 20 --batchsize 5 -w ./net.gz  --nn-server 13333
+
+(on the client machine)
+./leelaz --nn-client gpu-p0:13333 --nn-client gpu-p1:13333 -t 60 --batchsize 5 -w ./net.gz --cpu-only
+
+The client machine will run using the net evaluations from the two GPU machines.  Be careful that net.gz should be the same file for all clients and servers - the net is used from the client for self-checking.
+
+# Alternatively
+You can share a single GPU with multiple clients the same way - just instantiate a server with lots of threads, and have clients run with small number of threads.
+
+----------------------------------------------------------------------------------------
+
+
+[![Linux Build Status](https://travis-ci.org/gcp/leela-zero.svg?branch=next)](https://travis-ci.org/gcp/leela-zero)
+[![Windows Build Status](https://ci.appveyor.com/api/projects/status/pf1hcgly8f1a8iu0/branch/next?svg=true)](https://ci.appveyor.com/project/gcp/leela-zero/branch/next)
 
 # What
 
@@ -160,7 +182,6 @@ Unix and macOS, after finishing the compile and while in the build directory:
 
     # Run AutoGTP to start contributing
     ./autogtp/autogtp
-
 
 # Usage for playing or analyzing games
 

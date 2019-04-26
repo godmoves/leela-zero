@@ -119,6 +119,7 @@ private:
     void dump_stats();
 
     void batch_worker(const size_t gnum, const size_t i);
+
     void push_input_convolution(unsigned int filter_size,
                                 unsigned int channels,
                                 unsigned int outputs,

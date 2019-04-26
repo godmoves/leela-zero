@@ -32,6 +32,7 @@
     <ClInclude Include="..\..\src\NNCache.h" />
     <ClInclude Include="..\..\src\ForwardPipe.h" />
     <ClInclude Include="..\..\src\CPUPipe.h" />
+    <ClInclude Include="..\..\src\DistributedNetwork.h" />
     <ClInclude Include="..\..\src\OpenCL.h" />
     <ClInclude Include="..\..\src\OpenCLScheduler.h" />
     <ClInclude Include="..\..\src\Random.h" />
@@ -61,6 +62,7 @@
     <ClCompile Include="..\..\src\Network.cpp" />
     <ClCompile Include="..\..\src\NNCache.cpp" />
     <ClCompile Include="..\..\src\CPUPipe.cpp" />
+    <ClCompile Include="..\..\src\DistributedNetwork.cpp" />
     <ClCompile Include="..\..\src\OpenCL.cpp" />
     <ClCompile Include="..\..\src\OpenCLScheduler.cpp" />
     <ClCompile Include="..\..\src\Random.cpp" />
