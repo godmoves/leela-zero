@@ -81,8 +81,7 @@ private:
 
 extern bool cfg_gtp_mode;
 extern bool cfg_allow_pondering;
-extern unsigned int cfg_num_threads;
-extern unsigned int cfg_batch_size;
+extern int cfg_num_threads;
 extern int cfg_max_playouts;
 extern int cfg_max_visits;
 extern size_t cfg_max_memory;
@@ -99,8 +98,13 @@ extern std::uint64_t cfg_rng_seed;
 extern bool cfg_dumbpass;
 #ifdef USE_OPENCL
 extern std::vector<int> cfg_gpus;
+extern std::vector<int> cfg_workers;
 extern bool cfg_sgemm_exhaustive;
 extern bool cfg_tune_only;
+extern std::vector<int> cfg_batch_size;
+extern bool cfg_frac_backup;
+extern bool cfg_vl_in_parentvisits;
+extern float cfg_uct_temp;
 #ifdef USE_HALF
 enum class precision_t {
     AUTO, SINGLE, HALF

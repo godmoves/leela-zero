@@ -30,6 +30,10 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
+#define SCHEDULE_DEBUG
+#define ACCUM_DEBUG
+//#define LOCK_DEBUG
+//#define UCT_SOFTMAX
 /*
  * We need to check for input while we are thinking.
  * That code isn't portable, so select something appropriate for the system.
@@ -110,7 +114,7 @@ static constexpr auto KOMI = 7.5f;
  * USE_TUNER: Expose some extra command line parameters that allow tuning the
  * search algorithm.
  */
-//#define USE_TUNER
+#define USE_TUNER
 
 static constexpr auto PROGRAM_NAME = "Leela Zero";
 static constexpr auto PROGRAM_VERSION = "0.17";
@@ -132,7 +136,7 @@ static constexpr auto MAX_CPUS = 256;
 #ifdef USE_OPENCL
 // If OpenCL are fully usable, then check the OpenCL against CPU
 // implementation with some probability.
-#define USE_OPENCL_SELFCHECK
+//#define USE_OPENCL_SELFCHECK
 static constexpr auto SELFCHECK_PROBABILITY = 2000;
 #endif
 

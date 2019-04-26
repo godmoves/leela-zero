@@ -79,7 +79,7 @@ static void calculate_thread_count_cpu(boost::program_options::variables_map & v
 
 #ifdef USE_OPENCL
 static void calculate_thread_count_gpu(boost::program_options::variables_map & vm) {
-    auto cfg_max_threads = size_t{MAX_CPUS};
+    /*auto cfg_max_threads = size_t{MAX_CPUS};
 
     // Default thread count : GPU case
     // 1) if no args are given, use batch size of 5 and thread count of (batch size) * (number of gpus) * 2
@@ -90,7 +90,6 @@ static void calculate_thread_count_gpu(boost::program_options::variables_map & v
         // size of zero if autodetect GPU : default to 1
         gpu_count = 1;
     }
-
     if (vm["threads"].as<unsigned int>() > 0) {
         auto num_threads = vm["threads"].as<unsigned int>();
         if (num_threads > cfg_max_threads) {
@@ -98,7 +97,6 @@ static void calculate_thread_count_gpu(boost::program_options::variables_map & v
             num_threads = cfg_max_threads;
         }
         cfg_num_threads = num_threads;
-
         if (vm["batchsize"].as<unsigned int>() > 0) {
             cfg_batch_size = vm["batchsize"].as<unsigned int>();
         } else {
@@ -123,9 +121,7 @@ static void calculate_thread_count_gpu(boost::program_options::variables_map & v
     if (cfg_num_threads < cfg_batch_size) {
         printf("Number of threads = %d must be no smaller than batch size = %d\n", cfg_num_threads, cfg_batch_size);
         exit(EXIT_FAILURE);
-    }
-
-
+    }*/
 }
 #endif
 
@@ -164,15 +160,19 @@ static void parse_commandline(int argc, char *argv[]) {
 #ifndef USE_CPU_ONLY
         ("cpu-only", "Use CPU-only implementation and do not use OpenCL device(s).")
 #endif
+        ("disable-frac-backup", "Disable fractional backup feature.")
+        ("no-vl-in-parentvisits", "No virtual loss in sum of children's visits.")
+        ("uct-temp", po::value<float>(), "")
         ;
 #ifdef USE_OPENCL
     po::options_description gpu_desc("OpenCL device options");
     gpu_desc.add_options()
-        ("gpu",  po::value<std::vector<int> >(),
+        ("gpu",  po::value<std::vector<int>>(),
                 "ID of the OpenCL device(s) to use (disables autodetection).")
+        ("worker", po::value<std::vector<int>>(), "")
         ("full-tuner", "Try harder to find an optimal OpenCL tuning.")
         ("tune-only", "Tune OpenCL only and then exit.")
-        ("batchsize", po::value<unsigned int>()->default_value(0), "Max batch size.  Select 0 to let leela-zero pick a reasonable default.")
+        ("batchsize", po::value<std::vector<int>>(), "Max batch size for each OpenCL device.")
 #ifdef USE_HALF
         ("precision", po::value<std::string>(),
             "Floating-point precision (single/half/auto).\n"
@@ -268,6 +268,18 @@ static void parse_commandline(int argc, char *argv[]) {
         cfg_quiet = true;  // Set this early to avoid unnecessary output.
     }
 
+    if (vm.count("disable-frac-backup")) {
+        cfg_frac_backup = false;
+    }
+
+    if (vm.count("no-vl-in-parentvisits")) {
+        cfg_vl_in_parentvisits = false;
+    }
+
+    if (vm.count("uct-temp")) {
+        cfg_uct_temp = vm["uct-temp"].as<float>();
+    }
+
 #ifdef USE_TUNER
     if (vm.count("puct")) {
         cfg_puct = vm["puct"].as<float>();
@@ -307,8 +319,24 @@ static void parse_commandline(int argc, char *argv[]) {
     }
 
 #ifdef USE_OPENCL
+    // If we will be GPU limited, the optimal number of threads varies quite differently
+    // due to the batching behavior - we need threads that are sufficient enough to flood
+    // all the GPUs.
+#else
+#endif
+
+
+#ifdef USE_OPENCL
     if (vm.count("gpu")) {
-        cfg_gpus = vm["gpu"].as<std::vector<int> >();
+        cfg_gpus = vm["gpu"].as<std::vector<int>>();
+    }
+
+    if (vm.count("batchsize")) {
+        cfg_batch_size = vm["batchsize"].as<std::vector<int>>();
+    }
+
+    if (vm.count("worker")) {
+        cfg_workers = vm["worker"].as<std::vector<int>>();
     }
 
     if (vm.count("full-tuner")) {
@@ -346,19 +374,23 @@ static void parse_commandline(int argc, char *argv[]) {
         }
     }
 #endif
-    if (vm.count("cpu-only")) {
-        cfg_cpu_only = true;
-    }
 #else
     cfg_cpu_only = true;
 #endif
+    if (vm.count("cpu-only")) {
+        cfg_cpu_only = true;
+    }
 
     if (cfg_cpu_only) {
         calculate_thread_count_cpu(vm);
     } else {
 #ifdef USE_OPENCL
         calculate_thread_count_gpu(vm);
-        myprintf("Using OpenCL batch size of %d\n", cfg_batch_size);
+        myprintf("Using OpenCL batch size of ");
+        for (auto sz : cfg_batch_size) {
+            myprintf("%d, ", sz);
+        }
+        myprintf("\n");
 #endif
     }
     myprintf("Using %d thread(s).\n", cfg_num_threads);
@@ -492,7 +524,7 @@ static void initialize_network() {
 
 // Setup global objects after command line has been parsed
 void init_global_objects() {
-    thread_pool.initialize(cfg_num_threads);
+    thread_pool.initialize(1); // one thread just for tree destruction
 
     // Use deterministic random numbers for hashing
     auto rng = std::make_unique<Random>(5489);

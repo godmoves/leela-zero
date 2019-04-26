@@ -32,8 +32,13 @@
 
 #include <memory>
 #include <vector>
+#include <condition_variable>
 
 #include "config.h"
+#include "NNCache.h"
+
+class UCTSearch;
+class Network;
 
 class ForwardPipe {
 public:
@@ -60,10 +65,22 @@ public:
     virtual void forward(const std::vector<float>& input,
                          std::vector<float>& output_pol,
                          std::vector<float>& output_val) = 0;
+    virtual void forward0(int gnum, int i,
+                          const std::vector<float>& input,
+                          const int tomove,
+                          const int symmetry,
+                          Netresult_ptr result) = 0;
     virtual void push_weights(unsigned int filter_size,
                               unsigned int channels,
                               unsigned int outputs,
                               std::shared_ptr<const ForwardPipeWeights> weights) = 0;
+    virtual void clear_stats() = 0;
+    virtual void dump_stats() = 0;
+    UCTSearch* m_search{nullptr};
+    Network* m_network;
+    std::mutex m_mutex;
+    std::condition_variable m_cv0;
+    //std::atomic<int> m_max_queue_size{0};
 };
 
 #endif

@@ -144,10 +144,11 @@ void OpenCL_Network<net_t>::add_weights(size_t layer,
 }
 
 template <typename net_t>
-void OpenCL_Network<net_t>::forward(const std::vector<float>& input,
+void OpenCL_Network<net_t>::forward(const net_t* input,
                              std::vector<float>& output_pol,
                              std::vector<float>& output_val,
                              OpenCLContext & opencl_context,
+                             OpenCLScheduler<net_t>& scheduler,
                              const int batch_size) {
     constexpr auto tiles = WINOGRAD_P;
     constexpr auto one_plane = NUM_INTERSECTIONS * sizeof(net_t);
@@ -208,11 +209,10 @@ void OpenCL_Network<net_t>::forward(const std::vector<float>& input,
     cl::Buffer & MBuffer = opencl_context.m_MBuffer;
     cl::CommandQueue & queue = opencl_context.m_commandqueue;
 
-    std::vector<net_t> net_t_input(input.size());
-    std::copy(begin(input), end(input), begin(net_t_input));
+    std::unique_lock<std::mutex> enqueue_lock(m_enqueue_mutex);
 
-    const auto inSize = sizeof(net_t) * input.size();
-    queue.enqueueWriteBuffer(inBuffer, CL_FALSE, 0, inSize, net_t_input.data());
+    constexpr auto in_size = Network::INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE;
+    queue.enqueueWriteBuffer(inBuffer, CL_FALSE, 0, sizeof(net_t) * in_size * batch_size, input);
 
     // Fused in_out transformation kernel is slower with big batch_sizes than
     // calling out and in transformations separately.
@@ -311,12 +311,40 @@ void OpenCL_Network<net_t>::forward(const std::vector<float>& input,
         opencl_context.m_pinnedOutBuffer_val, CL_FALSE,
         CL_MAP_READ, 0, batch_size * finalSize_val);
 
-    {
-        // Finish call is usually a busy wait. When using multiple threads
-        // use the lock to avoid busy waiting with all threads.
-        std::lock_guard<std::mutex> lock(m_queue_finish_mutex);
-        queue.finish();
-    }
+    //std::unique_lock<std::mutex> enqueue_lock(m_enqueue_mutex);
+    //enqueue_lock.unlock();
+    //std::unique_lock<std::mutex> finish_lock(m_queue_finish_mutex);
+    //enqueue_lock.lock();
+    //std::unique_lock<std::mutex> enqueue_lock(m_enqueue_mutex);
+    queue.finish();
+    //finish_lock.unlock();
+    //enqueue_lock.unlock();
+    
+    /*{
+        std::lock_guard<std::mutex> lk(m_opencl.mutex);
+        if (--m_opencl.m_occupied == 0) {
+            m_opencl.idle_count++;
+            int max_idx = -1;
+            int max_cnt = 0;
+            for (auto i = 0; i < m_opencl.m_num_workers; i++) {
+                auto cnt = m_opencl.written_location[i].load();
+                if (cnt > max_cnt) {
+                    max_idx = i; max_cnt = cnt;
+                }
+            }
+            if (max_cnt > 0) m_opencl.cv[max_idx].notify_one();
+        }
+    }*/
+    /*for (auto i = scheduler.unfull_workers_head.load(); i < scheduler.workers_written && !m_opencl.m_occupied; i++) {
+        int gpu, idx;
+        std::tie(gpu, idx) = scheduler.unfull_workers[scheduler.len & i];
+        if (&m_opencl == &*scheduler.m_opencl[gpu] && m_opencl.written_location[idx] > 0) {
+            // std::lock_guard<std::mutex> lk(m_opencl.mutex); ////
+            m_opencl.cv[idx].notify_one();
+            break;
+        }
+    }*/
+    //probably should first acquire lock to the gpu queue's mutex..
 
     auto polptr = static_cast<net_t*>(pinnedOutBufferHost_pol);
     auto valptr = static_cast<net_t*>(pinnedOutBufferHost_val);
@@ -327,7 +355,11 @@ void OpenCL_Network<net_t>::forward(const std::vector<float>& input,
             pinnedOutBufferHost_pol);
     queue.enqueueUnmapMemObject(opencl_context.m_pinnedOutBuffer_val,
             pinnedOutBufferHost_val);
+    enqueue_lock.unlock();
 
+    if (--m_opencl.m_occupied == 0) {
+        m_opencl.idle_count++;
+    }
 }
 
 template <typename net_t>
@@ -846,8 +878,9 @@ OpenCL<net_t>::OpenCL(int gpu, bool silent) {
 }
 
 template <typename net_t>
-void OpenCL<net_t>::initialize(const int channels, size_t batch_size) {
+void OpenCL<net_t>::initialize(const int channels, int num_workers, int batch_size) {
     m_batch_size = batch_size;
+    m_num_workers = num_workers;
     // Make program of the source code in the context
     try {
         m_program = cl::Program(m_context,
@@ -915,6 +948,27 @@ void OpenCL<net_t>::initialize(const int channels, size_t batch_size) {
     myprintf("\n");
 
     m_init_ok = true;
+    
+    constexpr auto in_size = Network::INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE;
+
+    batch_stats = new std::atomic<int>[batch_size]();
+    rounds = new std::atomic<int>[num_workers]();
+    inputs.reserve(num_workers);
+    backup_entries.reserve(num_workers);
+    for (auto i = 0; i < num_workers; i++) {
+        inputs.push_back(new net_t[in_size * batch_size]);
+        backup_entries.push_back(new BackupEntry[batch_size]);
+    }
+    //writing_location = new std::atomic<int>[num_workers];
+    written_location = new std::atomic<int>[num_workers];
+    //std::fill_n(writing_location, num_workers, -cfg_num_threads - 2);
+    std::fill_n(written_location, num_workers, 0);
+    //buffer_flag = new std::atomic_flag[num_workers];
+    //for (auto i = 0; i < num_workers; i++)
+    //    buffer_flag[i].clear();
+    //std::fill_n(buffer_flag, num_workers, ATOMIC_FLAG_INIT);
+    //mutex = new std::mutex[num_workers];
+    //cv = new std::condition_variable[num_workers];
 }
 
 template <typename net_t>
