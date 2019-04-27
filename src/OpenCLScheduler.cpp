@@ -36,8 +36,39 @@
 #include "Utils.h"
 #include "OpenCLScheduler.h"
 
+#include <chrono>
+
+using namespace std::chrono_literals;
 using Utils::ceilMultiple;
 using Utils::myprintf;
+
+
+template <typename net_t>
+void OpenCLScheduler<net_t>::clear_stats() {
+    for (auto& opencl : m_opencl) {
+        opencl->idle_count = 0;
+        opencl->failures = 0;
+        for (auto j = 0; j < opencl->m_batch_size; j++)
+            opencl->batch_stats[j] = 0;
+        for (auto j = 0; j < opencl->m_num_workers; j++)
+            opencl->rounds[j] = 0;
+    }
+}
+
+template <typename net_t>
+void OpenCLScheduler<net_t>::dump_stats() {
+    auto idx = 0;
+    for (auto& opencl : m_opencl) {
+        myprintf("GPU %d:\n", idx++);
+        myprintf("batch stats: ");
+        for (auto j = 0; j < opencl->m_batch_size; j++)
+            myprintf("%d, ", opencl->batch_stats[j].load());
+        myprintf("\nidle count: %d\nfailures: %d\nrounds: ", opencl->idle_count.load(), opencl->failures.load());
+        for (auto j = 0; j < opencl->m_num_workers; j++)
+            myprintf("%d, ", opencl->rounds[j].load());
+        myprintf("\n");
+    }
+}
 
 class from_float{
 public:
@@ -113,13 +144,31 @@ template <typename net_t>
 void OpenCLScheduler<net_t>::initialize(const int channels) {
     // Launch the worker threads.  Minimum 1 worker per GPU, but use enough threads
     // so that we can at least concurrently schedule something to the GPU.
-    auto num_worker_threads = cfg_num_threads / cfg_batch_size / (m_opencl.size() + 1) + 1;
-    auto gnum = 0;
-    for (auto & opencl : m_opencl) {
-        opencl->initialize(channels, cfg_batch_size);
 
-        for (auto i = unsigned{0}; i < num_worker_threads; i++) {
-            auto t = std::thread(&OpenCLScheduler<net_t>::batch_worker, this, gnum);
+    auto num_gpus = m_opencl.size();
+
+    // number of worker threads
+    if (cfg_workers.empty())
+        cfg_workers.assign(num_gpus, 2);
+    else while (cfg_workers.size() < num_gpus)
+        cfg_workers.push_back(cfg_workers.back());
+
+    // batch sizes
+    if (cfg_batch_size.empty())
+        cfg_batch_size.assign(num_gpus, 1);
+    else while (cfg_batch_size.size() < num_gpus)
+        cfg_batch_size.push_back(cfg_batch_size.back());
+
+    constexpr auto in_size = Network::INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE;
+
+    int gnum = 0;
+    for (auto & opencl : m_opencl) {
+        auto batchsize = cfg_batch_size[gnum];
+        auto num_workers = cfg_workers[gnum];
+        opencl->initialize(channels, num_workers, batchsize);
+
+        for (int i = num_workers; i > 0; ) {
+            auto t = std::thread(&OpenCLScheduler<net_t>::batch_worker, this, gnum, --i);
             m_worker_threads.push_back(std::move(t));
         }
         gnum++;
@@ -135,10 +184,13 @@ void OpenCLScheduler<net_t>::initialize(const int channels) {
 template <typename net_t>
 OpenCLScheduler<net_t>::~OpenCLScheduler() {
     {
-        std::unique_lock<std::mutex> lk(m_mutex);
+        std::lock_guard<std::mutex> lk(m_search->m_mutex);
         m_running = false;
+        m_search->m_run = true;
     }
-    m_cv.notify_all();
+    
+    m_search->m_cv.notify_all();
+
     for (auto & x : m_worker_threads) {
         x.join();
     }
@@ -148,7 +200,7 @@ template<typename net_t>
 bool OpenCLScheduler<net_t>::needs_autodetect() {
     for (auto& opencl : m_opencl) {
         // If any card has no native fp16 compute, we'll have to benchmark.
-        if (!opencl->has_fp16_compute()) {
+        if (!opencl->has_fp16_compute() && !opencl->has_tensor_cores()) {
             return true;
         }
     }
@@ -280,133 +332,148 @@ void OpenCLScheduler<net_t>::forward(const std::vector<float>& input,
     entry->cv.wait(lk);
 }
 
-#ifndef NDEBUG
-struct batch_stats_t batch_stats;
-#endif
+template <typename net_t>
+void OpenCLScheduler<net_t>::forward0(int gnum, int i,
+              const std::vector<float>& input,
+              const int tomove,
+              const int symmetry,
+              Netresult_ptr result) {
+    constexpr auto in_size = Network::INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE;
+
+    auto& opencl = m_opencl[gnum];
+    auto& written_loc = opencl->written_location[i];
+    auto loc = written_loc.load();
+    std::transform(input.begin(), input.end(),
+        opencl->inputs[i] + in_size * loc,
+        [](float x) {return (net_t)x; });
+    opencl->backup_entries[i][loc] = { tomove, symmetry, result };
+    written_loc++;
+    m_search->m_positions++;
+}
 
 template <typename net_t>
-void OpenCLScheduler<net_t>::batch_worker(const size_t gnum) {
+void OpenCLScheduler<net_t>::batch_worker(const size_t gnum, const size_t i) {
+
     constexpr auto in_size = Network::INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE;
     constexpr auto out_pol_size = Network::OUTPUTS_POLICY * BOARD_SIZE * BOARD_SIZE;
     constexpr auto out_val_size = Network::OUTPUTS_VALUE * BOARD_SIZE * BOARD_SIZE;
 
     OpenCLContext context;
 
-    // batch scheduling heuristic.
-    // Returns the batch picked up from the queue (m_forward_queue)
-    // 1) Wait for m_waittime milliseconds for full batch
-    // 2) if we don't have a full batch then just do a single eval
-    //
-    // The purpose of m_waittime is to prevent the system from deadlocking
-    // because we were waiting for a job too long, while the job is never
-    // going to come due to a control dependency (e.g., evals stuck on a
-    // critical path).  To do so:
-    //
-    // 1) if we couldn't form a batch after waiting m_waittime ms, it means
-    // that we hit the critical path and should do scalar evals.
-    // Wait 1ms shorter next time.
-    //
-    // 2) if we picked up a single eval, but were getting additional evals
-    // while that single eval was being processed, it means that we made
-    // the wrong decision.  Wait 2ms longer next time.
+    auto& opencl = m_opencl[gnum];
+    auto batch_size = opencl->m_batch_size;
+    //auto& writing_loc = opencl->writing_location[i];
+    auto& written_loc = opencl->written_location[i];
+    auto& inputs = opencl->inputs[i];
+    auto& entries = opencl->backup_entries[i];
 
-    auto pickup_task = [this] () {
-        std::list<std::shared_ptr<ForwardQueueEntry>> inputs;
-        size_t count = 0;
+    auto batch_output_pol = std::vector<float>(out_pol_size * batch_size);
+    auto batch_output_val = std::vector<float>(out_val_size * batch_size);
 
-        std::unique_lock<std::mutex> lk(m_mutex);
-        while (true) {
-            if (!m_running) return inputs;
+    auto failures = 0;
+    auto count = written_loc.load();
 
-            count = m_forward_queue.size();
-            if (count >= cfg_batch_size) {
-                count = cfg_batch_size;
-                break;
+    while (m_running) {
+        if (count == batch_size || (count > 0 && failures > 10 && !opencl->m_occupied)) {
+            opencl->m_occupied++;
+            batch_output_pol.resize(out_pol_size * count);
+            batch_output_val.resize(out_val_size * count);
+            m_networks[gnum]->forward(inputs, batch_output_pol, batch_output_val, context, *this, count);
+            for (auto index = 0; index < count; ) {
+                std::vector<float> out_p(begin(batch_output_pol) + out_pol_size * index,
+                    begin(batch_output_pol) + out_pol_size * (index + 1));
+                std::vector<float> out_v(begin(batch_output_val) + out_val_size * index,
+                    begin(batch_output_val) + out_val_size * (index + 1));
+                m_network->process_output(out_p, out_v, entries[index].tomove,
+                    entries[index].symmetry, entries[index].result);
+                index++;
             }
-
-            bool timeout = !m_cv.wait_for(
-                lk,
-                std::chrono::milliseconds(m_waittime),
-                [this] () {
-                    return !m_running || m_forward_queue.size() >= cfg_batch_size;
-                }
-            );
-
-            if (!m_forward_queue.empty()) {
-                if (timeout && m_single_eval_in_progress.exchange(true) == false) {
-                    // Waited long enough but couldn't form a batch.
-                    // Check if there is any other single eval in progress, and if not,
-                    // do one from this thread.
-                    if (m_waittime > 1) {
-                        m_waittime--;
-                    }
-                    count = 1;
-                    break;
-                }
-            }
-        }
-        // Move 'count' evals from shared queue to local list.
-        auto end = begin(m_forward_queue);
-        std::advance(end, count);
-        std::move(begin(m_forward_queue), end, std::back_inserter(inputs));
-        m_forward_queue.erase(begin(m_forward_queue), end);
-
-        return inputs;
-    };
-
-    auto batch_input = std::vector<float>();
-    auto batch_output_pol = std::vector<float>();
-    auto batch_output_val = std::vector<float>();
-
-    while (true) {
-        auto inputs = pickup_task();
-        auto count = inputs.size();
-
-        if (!m_running) {
-            return;
-        }
-
-#ifndef NDEBUG
-        if (count == 1) {
-            batch_stats.single_evals++;
+            opencl->rounds[i]++;
+            opencl->batch_stats[count - 1]++;
+            written_loc = 0;
+            count = 0;
+            failures = 0;
         } else {
-            batch_stats.batch_evals++;
-        }
-#endif
-
-        // prepare input for forward() call
-        batch_input.resize(in_size * count);
-        batch_output_pol.resize(out_pol_size * count);
-        batch_output_val.resize(out_val_size * count);
-
-        auto index = size_t{0};
-        for (auto & x : inputs) {
-            std::unique_lock<std::mutex> lk(x->mutex);
-            std::copy(begin(x->in), end(x->in), begin(batch_input) + in_size * index);
-            index++;
-        }
-
-        // run the NN evaluation
-        m_networks[gnum]->forward(
-            batch_input, batch_output_pol, batch_output_val, context, count);
-
-        // Get output and copy back
-        index = 0;
-        for (auto & x : inputs) {
-            std::copy(begin(batch_output_pol) + out_pol_size * index,
-                      begin(batch_output_pol) + out_pol_size * (index + 1),
-                      begin(x->out_p));
-            std::copy(begin(batch_output_val) + out_val_size * index,
-                      begin(batch_output_val) + out_val_size * (index + 1),
-                      begin(x->out_v));
-            x->cv.notify_all();
-            index++;
-        }
-
-        if (count == 1) {
-            m_single_eval_in_progress = false;
+            if (m_search) { m_search->search(gnum, i); }
+            auto new_count = written_loc.load();
+            if (new_count > count) failures = 0;
+            else {
+                failures++; opencl->failures++;
+            }
+            count = new_count;
         }
     }
+
+
+        //std::unique_lock<std::mutex> lk(m_mutex);
+        //m_cv.notify_all();
+        //lk.unlock();
+        /*{
+            auto t = std::thread([=](std::vector<std::unique_ptr<ForwardQueueEntry0>> inputs_) {
+                auto index = 0;
+                for (auto it = inputs_.begin(); it != inputs_.end(); ++it) {
+                    std::vector<float> out_p(begin(batch_output_pol) + out_pol_size * index,
+                        begin(batch_output_pol) + out_pol_size * (index + 1));
+                    std::vector<float> out_v(begin(batch_output_val) + out_val_size * index,
+                        begin(batch_output_val) + out_val_size * (index + 1));
+                    index++;
+                    m_network->process_output(out_p, out_v, (*it)->tomove, (*it)->symmetry, (*it)->result);
+                }
+                //m_search->m_pending_netresults += cfg_batch_size[gnum];
+                m_search->m_cv.notify_all();
+            }, std::move(inputs));
+            t.detach();
+        }*/
+
+        /*{
+            for (auto index = 0; index < inputs.size(); ) {
+                std::vector<float> out_p(begin(batch_output_pol) + out_pol_size * index,
+                    begin(batch_output_pol) + out_pol_size * (index + 1));
+                std::vector<float> out_v(begin(batch_output_val) + out_val_size * index,
+                    begin(batch_output_val) + out_val_size * (index + 1));
+                m_network->process_output(out_p, out_v, inputs[index]->tomove, inputs[index]->symmetry, inputs[index]->result);
+                index++;
+            }
+            //m_search->m_pending_netresults += cfg_batch_size[gnum];
+            // No need now : m_search->m_cv.notify_all();
+        }*/
+        /*
+        {
+            std::vector<std::thread> backup_threads;
+            auto index = 0;
+            for (auto it = begin(inputs); it != end(inputs); ++it) {
+                std::vector<float> out_p(begin(batch_output_pol) + out_pol_size * index,
+                                         begin(batch_output_pol) + out_pol_size * (index + 1));
+                std::vector<float> out_v(begin(batch_output_val) + out_val_size * index,
+                                         begin(batch_output_val) + out_val_size * (index + 1));
+                index++;
+                
+                auto t = std::thread([=](std::vector<float>& p, std::vector<float>& v,
+                    const int tomove,
+                    const int symmetry,
+                    Netresult_ptr result) {
+                    m_network->process_output(p, v, tomove, symmetry, result); }, out_p, out_v, 
+                    (*it)->tomove, (*it)->symmetry, (*it)->result);
+                t.detach(); // can't control any more, but no harm even after !m_run, since won't be able to back up anything.
+                
+                //backup_threads.emplace_back(std::thread([=](std::vector<float>& p, std::vector<float>& v) { 
+                  //  m_network->process_output(p, v,
+                    //(*it)->tomove, (*it)->symmetry, (*it)->result); }, out_p, out_v));
+                    
+                //m_network->process_output(out_p, out_v, (*it)->tomove, (*it)->symmetry, (*it)->result);
+            }
+            for (auto iter = backup_threads.begin(); iter != backup_threads.end(); iter++) {
+            //    iter->join();
+            }
+        }
+        */
+        //myprintf("%d ", m_max_queue_size.load());
+        //m_max_queue_size += cfg_batch_size[gnum];
+        //myprintf("max queue size: %d - worker %d\n", m_max_queue_size.load(), i);
+        //lk.lock();
+        // m_cv0.notify_all();
+        //m_search->backup();
+        //m_search->m_cv.notify_all();
 }
 
 template class OpenCLScheduler<float>;

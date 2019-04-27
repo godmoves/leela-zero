@@ -44,35 +44,34 @@
 #include "UCTNode.h"
 #include "Network.h"
 
-
-class SearchResult {
-public:
-    SearchResult() = default;
-    bool valid() const { return m_valid;  }
-    float eval() const { return m_eval;  }
-    static SearchResult from_eval(float eval) {
-        return SearchResult(eval);
-    }
-    static SearchResult from_score(float board_score) {
-        if (board_score > 0.0f) {
-            return SearchResult(1.0f);
-        } else if (board_score < 0.0f) {
-            return SearchResult(0.0f);
-        } else {
-            return SearchResult(0.5f);
-        }
-    }
-private:
-    explicit SearchResult(float eval)
-        : m_valid(true), m_eval(eval) {}
-    bool m_valid{false};
-    float m_eval{0.0f};
-};
-
 namespace TimeManagement {
     enum enabled_t {
         AUTO = -1, OFF = 0, ON = 1, FAST = 2, NO_PRUNING = 3
     };
+};
+
+struct BackupData {
+    struct NodeFactor {
+        UCTNode* node;
+        float factor;
+        NodeFactor(UCTNode* node, float factor) : node(node), factor(factor) {}
+    };
+    float eval{ -1.0f };
+    std::vector<NodeFactor> path;
+    int symmetry;
+    std::unique_ptr<GameState> state;
+    std::atomic<int>* pending_counter;
+    //int multiplicity{1};
+};
+
+class UCTWorker {
+public:
+    UCTWorker(UCTSearch * search, int thread_num)
+        : m_search(search), m_thread_num(thread_num) {}
+    //void operator()();
+private:
+    UCTSearch * m_search;
+    int m_thread_num;
 };
 
 class UCTSearch {
@@ -108,19 +107,65 @@ public:
         std::numeric_limits<int>::max() / 2;
 
     UCTSearch(GameState& g, Network & network);
+    ~UCTSearch();
+    void search(int gnum, int i);
     int think(int color, passflag_t passflag = NORMAL);
     void set_playout_limit(int playouts);
     void set_visit_limit(int visits);
     void ponder();
     bool is_running() const;
     void increment_playouts();
+    void play_simulation(std::unique_ptr<GameState> currstate, UCTNode* node, 
+        std::atomic<int>* pending_counter, int gnum, int i);
+    std::atomic<int> m_positions{0};
+    std::atomic<bool> m_run{false};
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+
+    void backup(BackupData& bd, Netresult_ptr netresult);
+    
+    std::atomic<int> pending_netresults{0};
+    std::atomic<int> max_pending_netresults;
+    std::atomic<int> min_pending_netresults;
     std::string explain_last_think() const;
-    SearchResult play_simulation(GameState& currstate, UCTNode* const node);
 
 private:
-    float get_min_psa_ratio() const;
+    
+    friend class UCTWorker;
+#ifdef ACCUM_DEBUG
+    std::atomic<int> failed_simulations{0};
+    std::atomic<uint16_t> max_leaf_vl;
+    std::atomic<uint16_t> max_vl;
+    std::atomic<int> pending_backups{0};
+    std::atomic<int> max_pending_backups;
+    std::atomic<int> pending_w_mult{0};
+    std::atomic<int> max_pending_w_mult;
+
+    std::string m_debug_string = "";
+#endif
+    
+    std::atomic<uint8_t> m_root_lock{0};
+    void acquire_reader();
+    void release_reader();
+    void acquire_writer();
+    void release_writer();
+    std::atomic<int>* m_pending_counter{nullptr};
+    GameState m_rootstate;
+    GameState & m_gtpstate;
+    std::unique_ptr<GameState> m_last_rootstate;
+    std::unique_ptr<UCTNode> m_root;
+    std::atomic<int> m_playouts;
+    int m_maxplayouts;
+    int m_maxvisits;
+
+    Utils::ThreadGroup m_search_threads;
+    std::atomic<bool> m_root_prepared{true};
+
+    //std::list<Utils::ThreadGroup> m_delete_futures;
+    Utils::ThreadGroup m_delete_futures;
+
     void dump_stats(FastState& state, UCTNode& parent);
-    void tree_stats(const UCTNode& node);
+    void tree_stats(UCTNode& node);
     std::string get_pv(FastState& state, UCTNode& parent);
     std::string get_analysis(int playouts);
     bool should_resign(passflag_t passflag, float besteval);
@@ -131,33 +176,15 @@ private:
     bool stop_thinking(int elapsed_centis = 0, int time_for_move = 0) const;
     int get_best_move(passflag_t passflag);
     void update_root();
-    bool advance_to_new_rootstate();
+    bool advance_to_new_rootstate(std::list<UCTNode*>& to_delete);
     void output_analysis(FastState & state, UCTNode & parent);
 
-    GameState & m_rootstate;
-    std::unique_ptr<GameState> m_last_rootstate;
-    std::unique_ptr<UCTNode> m_root;
-    std::atomic<int> m_nodes{0};
-    std::atomic<int> m_playouts{0};
-    std::atomic<bool> m_run{false};
-    int m_maxplayouts;
-    int m_maxvisits;
     std::string m_think_output;
 
-    std::list<Utils::ThreadGroup> m_delete_futures;
-
     Network & m_network;
-};
 
-class UCTWorker {
-public:
-    UCTWorker(GameState & state, UCTSearch * search, UCTNode * root)
-      : m_rootstate(state), m_search(search), m_root(root) {}
-    void operator()();
-private:
-    GameState & m_rootstate;
-    UCTSearch * m_search;
-    UCTNode * m_root;
+    void backup(BackupData& bd, uint16_t vl);
+    void failed_simulation(BackupData& bd, uint16_t vl, bool incr = false);
 };
 
 #endif

@@ -33,11 +33,14 @@
 #include "config.h"
 
 #include <array>
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
+struct BackupData;
 class NNCache {
 public:
 
@@ -45,7 +48,7 @@ public:
     static constexpr int MAX_CACHE_COUNT = 150'000;
 
     // Minimum size of the cache in number of items.
-    static constexpr int MIN_CACHE_COUNT = 6'000;
+    static constexpr int MIN_CACHE_COUNT = 1;
 
     struct Netresult {
         // 19x19 board positions
@@ -57,15 +60,10 @@ public:
         // winrate
         float winrate;
 
-        Netresult() : policy_pass(0.0f), winrate(0.0f) {
+        Netresult() : policy_pass(0.0f), winrate(-1.0f) {
             policy.fill(0.0f);
         }
     };
-
-    static constexpr size_t ENTRY_SIZE =
-          sizeof(Netresult)
-        + sizeof(std::uint64_t)
-        + sizeof(std::unique_ptr<Netresult>);
 
     NNCache(int size = MAX_CACHE_COUNT);  // ~ 208MiB
 
@@ -74,27 +72,40 @@ public:
 
     // Resize NNCache
     void resize(int size);
-
-    // Try and find an existing entry.
-    bool lookup(std::uint64_t hash, Netresult & result);
-
-    // Insert a new entry.
-    void insert(std::uint64_t hash,
-                const Netresult& result);
+    void clear();
 
     // Return the hit rate ratio.
     std::pair<int, int> hit_rate() const {
         return {m_hits, m_lookups};
     }
 
+    void clear_stats();
     void dump_stats();
 
     // Return the estimated memory consumption of the cache.
     size_t get_estimated_size();
-private:
 
+    struct Entry {
+        //Entry(const Netresult& r)
+        //    : result(r) {}
+        std::atomic_flag ready{ ATOMIC_FLAG_INIT };
+        //int num_mods{0};
+        //std::mutex m_mutex;
+        Netresult result;  // ~ 1.4KiB
+        std::vector<BackupData> backup_obligations;
+    };
+
+    static constexpr size_t ENTRY_SIZE =
+        sizeof(Entry)
+        + sizeof(std::uint64_t)
+        + sizeof(std::shared_ptr<Entry>);
+
+    std::shared_ptr<Entry> lookup_and_insert(std::uint64_t hash, 
+        bool insert, bool lookup, BackupData& bd, bool& ready);
     std::mutex m_mutex;
-
+    //std::atomic<uint8_t> m_lock;
+private:
+    
     size_t m_size;
 
     // Statistics
@@ -102,16 +113,12 @@ private:
     int m_lookups{0};
     int m_inserts{0};
 
-    struct Entry {
-        Entry(const Netresult& r)
-            : result(r) {}
-        Netresult result;  // ~ 1.4KiB
-    };
-
     // Map from hash to {features, result}
-    std::unordered_map<std::uint64_t, std::unique_ptr<const Entry>> m_cache;
+    std::unordered_map<std::uint64_t, std::shared_ptr<Entry>> m_cache;
     // Order entries were added to the map.
     std::deque<size_t> m_order;
 };
+
+using Netresult_ptr = std::shared_ptr<NNCache::Entry>;
 
 #endif

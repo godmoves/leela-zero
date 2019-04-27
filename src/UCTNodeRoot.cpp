@@ -51,11 +51,13 @@
  * of UCTSearch and have been seperated to increase code clarity.
  */
 
-UCTNode* UCTNode::get_first_child() const {
+UCTNode* UCTNode::get_first_child() {
+    acquire_reader();
     if (m_children.empty()) {
+        release_reader();
         return nullptr;
     }
-
+    release_reader();
     return m_children.front().get();
 }
 
@@ -79,6 +81,16 @@ void UCTNode::kill_superkos(const GameState& state) {
         if (child->valid()) {
             valid_count++;
         }
+        if (child->valid()) {
+            valid_count++;
+        }
+    }
+
+    if (valid_count > 1 && pass_child &&
+            !state.is_move_legal(state.get_to_move(), FastBoard::PASS)) {
+        // Remove the PASS node according to "avoid" -- but only if there are
+        // other valid nodes left.
+        (*pass_child)->invalidate();
     }
 
     if (valid_count > 1 && pass_child &&
@@ -118,13 +130,22 @@ void UCTNode::dirichlet_noise(float epsilon, float alpha) {
         v /= sample_sum;
     }
 
+    //std::vector<UCTNode*> m_children_ptrs;
     child_cnt = 0;
     for (auto& child : m_children) {
         auto policy = child->get_policy();
         auto eta_a = dirichlet_vector[child_cnt++];
         policy = policy * (1 - epsilon) + epsilon * eta_a;
         child->set_policy(policy);
+        //m_children_ptrs.emplace_back(child.get());
     }
+    //sort_children(FastBoard::BLACK);
+    /*
+    std::stable_sort(rbegin(m_children_ptrs), rend(m_children_ptrs), 
+        [](UCTNode* a, UCTNode* b) { return a->get_policy() < b->get_policy(); });
+    for (auto i = 0; i < m_children.size(); i++) {
+        m_children[i].from_ptr(m_children_ptrs[i]);
+    }*/
 }
 
 void UCTNode::randomize_first_proportionally() {
@@ -169,7 +190,8 @@ void UCTNode::randomize_first_proportionally() {
     std::iter_swap(begin(m_children), begin(m_children) + index);
 }
 
-UCTNode* UCTNode::get_nopass_child(FastState& state) const {
+UCTNode* UCTNode::get_nopass_child(FastState& state) {
+    acquire_reader();
     for (const auto& child : m_children) {
         /* If we prevent the engine from passing, we must bail out when
            we only have unreasonable moves to pick, like filling eyes.
@@ -177,22 +199,26 @@ UCTNode* UCTNode::get_nopass_child(FastState& state) const {
            we require it because we're overruling its moves. */
         if (child->m_move != FastBoard::PASS
             && !state.board.is_eye(state.get_to_move(), child->m_move)) {
+            release_reader();
             return child.get();
         }
     }
+    release_reader();
     return nullptr;
 }
 
 // Used to find new root in UCTSearch.
 std::unique_ptr<UCTNode> UCTNode::find_child(const int move) {
+    acquire_reader();
     for (auto& child : m_children) {
         if (child.get_move() == move) {
              // no guarantee that this is a non-inflated node
             child.inflate();
+            release_reader();
             return std::unique_ptr<UCTNode>(child.release());
         }
     }
-
+    release_reader();
     // Can happen if we resigned or children are not expanded
     return nullptr;
 }
@@ -203,21 +229,10 @@ void UCTNode::inflate_all_children() {
     }
 }
 
-void UCTNode::prepare_root_node(Network & network, int color,
-                                std::atomic<int>& nodes,
-                                GameState& root_state) {
-    float root_eval;
-    const auto had_children = has_children();
-    if (expandable()) {
-        create_children(network, nodes, root_state, root_eval);
-    }
-    if (had_children) {
-        root_eval = get_net_eval(color);
-    } else {
-        update(root_eval);
-        root_eval = (color == FastBoard::BLACK ? root_eval : 1.0f - root_eval);
-    }
-    Utils::myprintf("NN eval=%f\n", root_eval);
+void UCTNode::prepare_root_node(GameState& root_state) {
+
+    Utils::myprintf("root eval=%f\n", get_raw_eval(root_state.get_to_move()));
+    // get_best_child etc. can't work before this? should forbid them from acquiring reader ?
 
     // There are a lot of special cases where code assumes
     // all children of the root are inflated, so do that.
@@ -227,7 +242,7 @@ void UCTNode::prepare_root_node(Network & network, int color,
     // This also removes a lot of special cases.
     kill_superkos(root_state);
 
-    if (cfg_noise) {
+    if (cfg_noise) { // need writer privilege..
         // Adjust the Dirichlet noise's alpha constant to the board size
         auto alpha = 0.03f * 361.0f / NUM_INTERSECTIONS;
         dirichlet_noise(0.25f, alpha);

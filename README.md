@@ -183,7 +183,6 @@ Unix and macOS, after finishing the compile and while in the build directory:
     # Run AutoGTP to start contributing
     ./autogtp/autogtp
 
-
 # Usage for playing or analyzing games
 
 Leela Zero is not meant to be used directly. You need a graphical interface
@@ -345,7 +344,7 @@ If interrupted, training can be resumed with:
 # Todo
 
 - [ ] Further optimize Winograd transformations.
-- [ ] Implement GPU batching in the search.
+- [ ] Improve GPU batching in the search.
 - [ ] Root filtering for handicap play.
 - More backends:
 - [ ] MKL-DNN based backend.
